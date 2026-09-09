@@ -1,0 +1,115 @@
+import { env } from '../../../config/env.js';
+
+export class InstagramAdapter {
+  private readonly baseUrl = `https://graph.instagram.com/${env.INSTAGRAM_API_VERSION}`;
+
+  async getAuthUrl(redirectUri: string): Promise<string> {
+    const scope = 'instagram_business_basic,instagram_business_content_publish,instagram_business_manage_insights,instagram_business_manage_comments';
+    const appId = env.INSTAGRAM_APP_ID || env.META_APP_ID;
+    return `https://www.instagram.com/oauth/authorize?enable_fb_login=0&force_authentication=1&client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${scope}`;
+  }
+
+  async exchangeCodeForToken(code: string, redirectUri: string) {
+    const url = `https://api.instagram.com/oauth/access_token`;
+    const appId = env.INSTAGRAM_APP_ID || env.META_APP_ID;
+    const appSecret = env.INSTAGRAM_APP_SECRET || env.META_APP_SECRET;
+
+    const formData = new URLSearchParams({
+      client_id: appId,
+      client_secret: appSecret,
+      grant_type: 'authorization_code',
+      redirect_uri: redirectUri,
+      code,
+    });
+
+    const response = await fetch(url, { method: 'POST', body: formData });
+    const data = await response.json();
+
+    if (!response.ok) throw new Error(data.error_message || data.error?.message || 'Failed to exchange token');
+
+    const shortToken = data.access_token;
+    const platformAccountId = data.user_id.toString();
+
+    // Exchange for long-lived token
+    const llUrl = `https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${appSecret}&access_token=${shortToken}`;
+    const llResponse = await fetch(llUrl);
+    const llData = await llResponse.json();
+
+    if (!llResponse.ok) throw new Error(llData.error?.message || 'Failed to get long-lived token');
+
+    return {
+      accessToken: llData.access_token,
+      platformAccountId,
+      expiresIn: llData.expires_in,
+    };
+  }
+
+  async getAccountProfile(accessToken: string, platformAccountId: string) {
+    const url = `${this.baseUrl}/me?fields=username,name,profile_picture_url,followers_count&access_token=${accessToken}`;
+    const response = await fetch(url);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error?.message || 'Failed to fetch profile');
+
+    return {
+      username: data.username,
+      displayName: data.name,
+      profileImageUrl: data.profile_picture_url,
+      followers: data.followers_count,
+    };
+  }
+
+  async publishPost(accessToken: string, platformAccountId: string, mediaUrl: string, caption: string) {
+    // 1. Create Media Container
+    const createUrl = `${this.baseUrl}/me/media`;
+    const createParams = new URLSearchParams({
+      image_url: mediaUrl,
+      caption: caption,
+      access_token: accessToken,
+    });
+
+    const createRes = await fetch(`${createUrl}?${createParams.toString()}`, { method: 'POST' });
+    const createData = await createRes.json();
+    if (!createRes.ok) throw new Error(createData.error?.message || 'Failed to create media container');
+
+    const creationId = createData.id;
+
+    // 2. Poll Status (Simplified here. In prod, wait until status_code=FINISHED)
+    await new Promise(resolve => setTimeout(resolve, 3000));
+
+    // 3. Publish
+    const publishUrl = `${this.baseUrl}/me/media_publish`;
+    const publishParams = new URLSearchParams({
+      creation_id: creationId,
+      access_token: accessToken,
+    });
+
+    const publishRes = await fetch(`${publishUrl}?${publishParams.toString()}`, { method: 'POST' });
+    const publishData = await publishRes.json();
+    if (!publishRes.ok) throw new Error(publishData.error?.message || 'Failed to publish media');
+
+    return {
+      platformPostId: publishData.id,
+      status: 'published',
+    };
+  }
+
+  async getPostInsights(accessToken: string, platformPostId: string) {
+    const url = `${this.baseUrl}/${platformPostId}/insights?metric=impressions,reach,saved,video_views&access_token=${accessToken}`;
+    const response = await fetch(url);
+    const data = await response.json();
+    if (!response.ok) return null;
+
+    const metrics: Record<string, number> = {};
+    for (const item of data.data || []) {
+      metrics[item.name] = item.values[0]?.value || 0;
+    }
+
+    return {
+      impressions: metrics.impressions || 0,
+      reach: metrics.reach || 0,
+      saves: metrics.saved || 0,
+      views: metrics.video_views || 0,
+      // Likes and comments come from the media node, not insights
+    };
+  }
+}

@@ -1,0 +1,52 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+
+# Environment files
+.env
+.env.local
+.env.production
+.env.*.local
+
+# Turbo
+.turbo/
+
+# Database
+*.sql.bak
+pgdata/
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+pnpm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test coverage
+coverage/
+.vitest/
+
+# TypeScript
+*.tsbuildinfo
+
+# Media / Generated assets (local storage)
+apps/api/storage/
+apps/api/uploads/
+
+# pnpm
+.pnpm-debug.log
