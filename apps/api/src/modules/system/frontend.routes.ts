@@ -101,12 +101,36 @@ export default async function dashboardRoutes(app: FastifyInstance) {
       LIMIT 10
     `;
 
+    // Fetch scheduled jobs
+    const scheduledJobsRaw = await sql`SELECT id, job_type, status, scheduled_for FROM scheduled_jobs ORDER BY scheduled_for ASC LIMIT 5`;
+    const scheduledJobs = scheduledJobsRaw.map(j => ({
+      id: j.id,
+      jobType: j.job_type,
+      status: j.status,
+      scheduledFor: j.scheduled_for
+    }));
+
+    // Fetch recent errors from agent_runs
+    const recentErrorsRaw = await sql`
+      SELECT error->>'message' as message, started_at as timestamp 
+      FROM agent_runs 
+      WHERE social_account_id = ${accountId} AND error IS NOT NULL 
+      ORDER BY started_at DESC 
+      LIMIT 5
+    `;
+    const recentErrors = recentErrorsRaw.map(e => ({
+      message: e.message || 'Unknown error',
+      timestamp: e.timestamp
+    }));
+
     return {
       success: true,
       data: {
         state,
         currentRun: activeRun,
-        recentDecisions
+        recentDecisions,
+        scheduledJobs,
+        recentErrors
       }
     };
   });
