@@ -120,7 +120,7 @@ export class OpenRouterAdapter implements LLMProvider {
     }
 
     const content = response.choices[0]?.message?.content || '';
-    
+
     LoggerService.logApiCall({
       direction: 'outward',
       method: 'POST',
@@ -146,7 +146,7 @@ export class OpenRouterAdapter implements LLMProvider {
 
     // Fire and forget usage tracking (cost logic abstracted for scaffold)
     // Avoid circular dependency by importing dynamically or just raw SQL here
-    import('../../db/client.js').then(({ sql }) => {
+    import('../../../db/client.js').then(({ sql }) => {
       sql`
         INSERT INTO llm_usage_records (
           provider, model, input_tokens, output_tokens, latency_ms, task_type
