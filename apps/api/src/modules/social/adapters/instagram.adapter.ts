@@ -22,6 +22,15 @@ export class InstagramAdapter {
 
       return { response, data };
     } catch (error: any) {
+      LoggerService.logApiCall({
+        direction: 'outward',
+        method: options.method || 'GET',
+        url,
+        statusCode: error.status || 500,
+        requestPayload: options.body ? Object.fromEntries(new URLSearchParams(options.body as string)) : undefined,
+        responsePayload: { error: error.message },
+        latencyMs: Date.now() - start
+      });
       LoggerService.logError({
         errorMessage: error.message || 'Instagram API Error',
         stackTrace: error.stack,

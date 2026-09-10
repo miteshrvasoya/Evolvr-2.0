@@ -39,6 +39,16 @@ export class OpenRouterAdapter implements LLMProvider {
         max_tokens: request.maxTokens,
       });
     } catch (e: any) {
+      const latencyMs = Date.now() - start;
+      LoggerService.logApiCall({
+        direction: 'outward',
+        method: 'POST',
+        url: `${env.OPENROUTER_BASE_URL}/chat/completions`,
+        statusCode: e.status || 500,
+        requestPayload: { model: this.defaultModel, userPrompt: request.userPrompt },
+        responsePayload: { error: e.message },
+        latencyMs
+      });
       LoggerService.logError({
         errorMessage: e.message || 'LLM API Error',
         stackTrace: e.stack,
@@ -87,6 +97,16 @@ export class OpenRouterAdapter implements LLMProvider {
         response_format: zodResponseFormat(request.outputSchema, request.schemaName),
       });
     } catch (e: any) {
+      const latencyMs = Date.now() - start;
+      LoggerService.logApiCall({
+        direction: 'outward',
+        method: 'POST',
+        url: `${env.OPENROUTER_BASE_URL}/chat/completions`,
+        statusCode: e.status || 500,
+        requestPayload: { model: this.strongModel, schema: request.schemaName, userPrompt: request.userPrompt },
+        responsePayload: { error: e.message },
+        latencyMs
+      });
       LoggerService.logError({
         errorMessage: e.message || 'LLM API Error',
         stackTrace: e.stack,
