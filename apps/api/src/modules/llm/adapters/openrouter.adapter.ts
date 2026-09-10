@@ -13,6 +13,8 @@ export class OpenRouterAdapter implements LLMProvider {
     this.client = new OpenAI({
       baseURL: env.OPENROUTER_BASE_URL,
       apiKey: env.OPENROUTER_API_KEY,
+      timeout: 300000, // Explicitly set 5 minute timeout for long-running LLM generation
+      maxRetries: 0, // Disable automatic retries which can abort and mask original timeouts
       defaultHeaders: {
         'HTTP-Referer': 'http://localhost:3000',
         'X-Title': 'Evolvr',
@@ -24,8 +26,6 @@ export class OpenRouterAdapter implements LLMProvider {
 
   async generateText(request: LLMRequest): Promise<LLMResponse> {
     const start = Date.now();
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minutes
 
     let response;
     try {
@@ -37,7 +37,7 @@ export class OpenRouterAdapter implements LLMProvider {
         ],
         temperature: request.temperature ?? 0.7,
         max_tokens: request.maxTokens,
-      }, { signal: controller.signal });
+      });
     } catch (e: any) {
       LoggerService.logError({
         errorMessage: e.message || 'LLM API Error',
@@ -48,8 +48,6 @@ export class OpenRouterAdapter implements LLMProvider {
         }
       });
       throw e;
-    } finally {
-      clearTimeout(timeoutId);
     }
 
     const content = response.choices[0]?.message?.content || '';
@@ -75,8 +73,6 @@ export class OpenRouterAdapter implements LLMProvider {
 
   async generateStructured<T>(request: StructuredLLMRequest<T>): Promise<LLMResponse<T>> {
     const start = Date.now();
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minutes
 
     let response;
     try {
@@ -89,7 +85,7 @@ export class OpenRouterAdapter implements LLMProvider {
         temperature: request.temperature ?? 0.2,
         max_tokens: request.maxTokens,
         response_format: zodResponseFormat(request.outputSchema, request.schemaName),
-      }, { signal: controller.signal });
+      });
     } catch (e: any) {
       LoggerService.logError({
         errorMessage: e.message || 'LLM API Error',
@@ -101,8 +97,6 @@ export class OpenRouterAdapter implements LLMProvider {
         }
       });
       throw e;
-    } finally {
-      clearTimeout(timeoutId);
     }
 
     const content = response.choices[0]?.message?.content || '';
