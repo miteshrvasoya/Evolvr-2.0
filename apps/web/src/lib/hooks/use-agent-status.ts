@@ -10,6 +10,13 @@ interface AgentStatus {
   recentDecisions: AgentDecision[];
   scheduledJobs: ScheduledJob[];
   recentErrors: Array<{ message: string; timestamp: string }>;
+  recentApiLogs?: Array<{
+    method: string;
+    url: string;
+    statusCode: number;
+    latencyMs: number;
+    createdAt: string;
+  }>;
   lastUpdated: string;
 }
 

@@ -120,6 +120,15 @@ export default async function dashboardRoutes(app: FastifyInstance) {
       };
     });
 
+    // Fetch recent Outward API logs
+    const recentApiLogs = await sql`
+      SELECT method, url, status_code, latency_ms, created_at
+      FROM api_logs
+      WHERE direction = 'outward'
+      ORDER BY created_at DESC
+      LIMIT 20
+    `;
+
     return {
       success: true,
       data: {
@@ -127,7 +136,8 @@ export default async function dashboardRoutes(app: FastifyInstance) {
         currentRun: activeRun,
         recentDecisions,
         scheduledJobs,
-        recentErrors
+        recentErrors,
+        recentApiLogs
       }
     };
   });

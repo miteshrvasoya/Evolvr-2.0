@@ -19,6 +19,7 @@ export class StrategyAgent {
     const tracker = new AgentRunTracker(runId);
 
     try {
+      console.log(`[StrategyAgent] Starting Strategy Revision for account ${socialAccountId}...`);
       await tracker.trackStep('Fetching Context', 'running');
       // 2. Fetch Context
       // Fetch Account Profile
@@ -47,9 +48,18 @@ export class StrategyAgent {
         experimentResults: '[]', // Mock
       };
 
+      const msg1 = `[StrategyAgent] Context fetched successfully. Goal: ${goal.goalType}`;
+      console.log(msg1);
+      await tracker.addLog(msg1);
+      
       await tracker.trackStep('Fetching Context', 'completed');
       await tracker.trackStep('Generating Strategy', 'running');
+      
       // 3. Generate Prompt & Call LLM
+      const msg2 = `[StrategyAgent] Asking LLM to generate new strategy... (This may take a minute)`;
+      console.log(msg2);
+      await tracker.addLog(msg2);
+      
       const prompt = buildStrategyPrompt(context);
       const llmResponse = await this.llm.generateStructured(prompt);
 
@@ -58,11 +68,18 @@ export class StrategyAgent {
       }
 
       const strategyData = llmResponse.structured;
+      const msg3 = `[StrategyAgent] LLM generated strategy successfully. Confidence: ${strategyData.confidence}`;
+      console.log(msg3);
+      await tracker.addLog(msg3);
 
       await tracker.trackStep('Generating Strategy', 'completed');
       await tracker.trackStep('Saving Strategy', 'running');
       
       // 4. Save Strategy Version
+      const msg4 = `[StrategyAgent] Saving new strategy version to database...`;
+      console.log(msg4);
+      await tracker.addLog(msg4);
+      
       const existingVersions = await sql`SELECT COUNT(*) as count FROM strategy_versions WHERE social_account_id = ${socialAccountId}`;
       const nextVersion = Number(existingVersions[0].count) + 1;
 
@@ -101,6 +118,7 @@ export class StrategyAgent {
         WHERE id = ${runId}
       `;
 
+      console.log(`[StrategyAgent] Strategy Revision Complete! New Strategy ID: ${strategyId}`);
       return { success: true, strategyId: insertedStrategy[0].id };
 
     } catch (error: any) {

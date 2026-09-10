@@ -22,7 +22,7 @@ export function AgentProgressSteps({ steps }: AgentProgressStepsProps) {
               {step.status === 'failed' && <XCircle className="h-4 w-4 text-destructive" />}
               {step.status === 'pending' && <Circle className="h-4 w-4 text-muted-foreground" />}
             </div>
-            <div className="flex flex-col">
+            <div className="flex flex-col flex-1">
               <span className={cn(
                 "text-sm font-medium",
                 step.status === 'failed' ? "text-destructive" :
@@ -35,8 +35,15 @@ export function AgentProgressSteps({ steps }: AgentProgressStepsProps) {
                   {step.error}
                 </span>
               )}
+              {step.logs && step.logs.length > 0 && (
+                <div className="mt-2 bg-black text-green-400 font-mono text-[10px] sm:text-xs rounded p-2 max-h-40 overflow-y-auto w-full">
+                  {step.logs.map((log, i) => (
+                    <div key={i} className="break-words mb-1 last:mb-0">{log}</div>
+                  ))}
+                </div>
+              )}
               {step.timestamp && (
-                <span className="text-xs text-muted-foreground mt-0.5">
+                <span className="text-xs text-muted-foreground mt-1">
                   {formatDistanceToNow(new Date(step.timestamp), { addSuffix: true })}
                 </span>
               )}

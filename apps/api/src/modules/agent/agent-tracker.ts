@@ -39,6 +39,21 @@ export class AgentRunTracker {
     }
   }
 
+  /**
+   * Append a log message to the currently running step
+   */
+  async addLog(message: string) {
+    const current = this.progress.find(s => s.status === 'running');
+    if (current) {
+      if (!current.logs) current.logs = [];
+      current.logs.push(message);
+      await this.persist();
+    } else {
+      // If no running step, just log to console
+      console.log(`[AgentRunTracker] No running step to attach log: ${message}`);
+    }
+  }
+
   private async persist() {
     try {
       await sql`

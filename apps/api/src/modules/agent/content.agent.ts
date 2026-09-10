@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { sql } from '../../db/client.js';
 import { getLLMProvider } from '../llm/index.js';
 import { PolicyEngine } from '../policies/policy.engine.js';
+import { AgentRunTracker } from './agent-tracker.js';
 import { 
   generateContentIdeasPrompt, 
   generateCaptionPrompt, 
@@ -15,6 +16,7 @@ export class ContentAgent {
 
   async generateContentPlan(socialAccountId: string, strategyVersionId: string) {
     const runId = randomUUID();
+    const tracker = new AgentRunTracker(runId);
     
     // 1. Create run record
     await sql`
@@ -23,6 +25,8 @@ export class ContentAgent {
     `;
 
     try {
+      console.log(`[ContentAgent] Starting Content Generation Plan for account ${socialAccountId}...`);
+      await tracker.trackStep('Fetching Context', 'running');
       // 2. Fetch Context
       const profiles = await sql`SELECT * FROM account_profiles WHERE social_account_id = ${socialAccountId}`;
       const profile = profiles[0] || {};
@@ -47,17 +51,39 @@ export class ContentAgent {
         bannedTopics: profile.bannedTopics || [],
       };
 
+      const msg1 = `[ContentAgent] Context fetched. Found ${activePillars.length} active content pillars.`;
+      console.log(msg1);
+      await tracker.addLog(msg1);
+      
+      await tracker.trackStep('Fetching Context', 'completed');
+      await tracker.trackStep('Generating Ideas', 'running');
+
       // 3. Generate Ideas
+      const msg2 = `[ContentAgent] Asking LLM to brainstorm new content ideas...`;
+      console.log(msg2);
+      await tracker.addLog(msg2);
+      
       const ideaPrompt = generateContentIdeasPrompt(ideaContext);
       const ideaResponse = await this.llm.generateStructured(ideaPrompt);
       
       if (!ideaResponse.structured) throw new Error('Failed to generate ideas');
       
       const ideas = ideaResponse.structured.ideas;
+      const msg3 = `[ContentAgent] Brainstorming complete! Generated ${ideas.length} new content ideas.`;
+      console.log(msg3);
+      await tracker.addLog(msg3);
+      
+      await tracker.trackStep('Generating Ideas', 'completed');
+      await tracker.trackStep('Drafting Captions', 'running');
+      
       const insertedIdeaIds: string[] = [];
 
       // 4. Generate Captions & Run Policy Checks for each idea
       for (const idea of ideas) {
+        const msg4 = `[ContentAgent] Drafting caption for idea: "${idea.concept}"...`;
+        console.log(msg4);
+        await tracker.addLog(msg4);
+        
         // Generate Caption
         const captionContext: CaptionGenerationContext = {
           brandVoice: ideaContext.brandVoice,
@@ -72,6 +98,10 @@ export class ContentAgent {
         const capResponse = await this.llm.generateStructured(capPrompt);
         const captionData = capResponse.structured;
 
+        const msg5 = `[ContentAgent] Running policy check for drafted caption...`;
+        console.log(msg5);
+        await tracker.addLog(msg5);
+        
         // Policy Check
         const policyDecision = await this.policyEngine.evaluate({
           caption: captionData?.caption || '',
@@ -79,6 +109,10 @@ export class ContentAgent {
           bannedTopics: ideaContext.bannedTopics,
           autonomyLevel,
         });
+        
+        const msg6 = `[ContentAgent] Policy Check result: ${policyDecision.decision}`;
+        console.log(msg6);
+        await tracker.addLog(msg6);
 
         const ideaId = randomUUID();
         insertedIdeaIds.push(ideaId);
@@ -89,6 +123,10 @@ export class ContentAgent {
         // In full implementation, if ALLOW, it gets scheduled
 
         // Insert Idea
+        const msg7 = `[ContentAgent] Saving draft ${ideaId} to database...`;
+        console.log(msg7);
+        await tracker.addLog(msg7);
+        
         await sql`
           INSERT INTO content_ideas (
             id, social_account_id, strategy_version_id, pillar, format, concept, hook, caption,
@@ -100,6 +138,12 @@ export class ContentAgent {
           )
         `;
       }
+      
+      const msg8 = `[ContentAgent] Content generation cycle complete. ${insertedIdeaIds.length} drafts saved.`;
+      console.log(msg8);
+      await tracker.addLog(msg8);
+
+      await tracker.trackStep('Drafting Captions', 'completed');
 
       // 5. Complete run
       await sql`

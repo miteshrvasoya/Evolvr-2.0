@@ -493,6 +493,7 @@ export interface AgentStep {
   step: string;
   status: 'pending' | 'running' | 'completed' | 'failed';
   error?: string;
+  logs?: string[];
   timestamp: ISO8601;
 }
 

@@ -201,6 +201,44 @@ export default function AgentPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Outward Network Logs */}
+      {status.recentApiLogs && status.recentApiLogs.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Outward Network Logs (LLM Calls)</CardTitle>
+            <CardDescription>Recent API calls made by the Agent to external providers.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="bg-black text-green-400 font-mono text-[10px] sm:text-xs rounded p-4 max-h-64 overflow-y-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-green-900 text-left text-green-600">
+                    <th className="pb-2 pr-4 font-normal">Method</th>
+                    <th className="pb-2 pr-4 font-normal">URL</th>
+                    <th className="pb-2 pr-4 font-normal">Status</th>
+                    <th className="pb-2 pr-4 font-normal">Latency</th>
+                    <th className="pb-2 font-normal">Time</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {status.recentApiLogs.map((log, i) => (
+                    <tr key={i} className="border-b border-green-900/30">
+                      <td className="py-2 pr-4 font-bold">{log.method}</td>
+                      <td className="py-2 pr-4 truncate max-w-[200px]" title={log.url}>{log.url}</td>
+                      <td className={cn("py-2 pr-4", log.statusCode >= 400 ? "text-red-400" : "text-green-400")}>
+                        {log.statusCode}
+                      </td>
+                      <td className="py-2 pr-4">{log.latencyMs}ms</td>
+                      <td className="py-2 text-green-600">{formatDistanceToNow(new Date(log.createdAt), { addSuffix: true })}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
