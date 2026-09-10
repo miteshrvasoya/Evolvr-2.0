@@ -7,20 +7,26 @@ export default async function agentRoutes(app: FastifyInstance) {
 
   app.addHook('onRequest', app.authenticate);
 
-  // Trigger manual daily cycle (for admin dashboard 'Run Now' button)
-  app.post('/accounts/:accountId/agent/trigger', async (request: any, reply) => {
-    const { accountId } = request.params;
-    const { id: userId } = request.user;
+  // Helper to get the primary account for the user
+  async function getPrimaryAccount(userId: string) {
+    const accounts = await sql`SELECT id FROM social_accounts WHERE user_id = ${userId} LIMIT 1`;
+    return accounts[0]?.id;
+  }
 
-    // Verify ownership
-    const accounts = await sql`SELECT id FROM social_accounts WHERE id = ${accountId} AND user_id = ${userId}`;
-    if (accounts.length === 0) return reply.status(404).send({ error: 'Account not found' });
+  // Trigger manual daily cycle (for admin dashboard 'Run Now' button)
+  app.post('/agent/trigger', async (request: any, reply) => {
+    const { id: userId } = request.user;
+    const accountId = await getPrimaryAccount(userId);
+
+    if (!accountId) {
+      return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'No primary account found' } });
+    }
 
     // Run async so we don't block the request if it takes long, or await if we want immediate feedback
     // We will await for the scaffold so UI gets immediate feedback
     const result = await orchestrator.runDailyCycle(accountId);
 
-    return { success: true, result };
+    return { success: true, data: result };
   });
 
   // Get Agent Decisions (for the Thinking Page)

@@ -93,7 +93,7 @@ export class StrategyAgent {
     } catch (error: any) {
       await sql`
         UPDATE agent_runs 
-        SET status = 'failed', completed_at = NOW(), error = ${JSON.stringify({ message: error.message })}
+        SET status = 'failed', completed_at = NOW(), error = ${sql.json({ message: error.message })}
         WHERE id = ${runId}
       `;
       throw error;

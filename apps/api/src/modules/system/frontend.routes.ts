@@ -28,46 +28,17 @@ export default async function dashboardRoutes(app: FastifyInstance) {
 
     // Fetch latest metrics
     const metrics = await sql`SELECT followers, reach, impressions, profile_visits FROM account_metrics WHERE social_account_id = ${accountId} ORDER BY captured_at DESC LIMIT 1`;
-    const am = metrics[0];
-    const accountMetrics = am ? {
-      followers: am.followers,
-      reach: am.reach,
-      impressions: am.impressions,
-      profileVisits: am.profile_visits
-    } : { followers: 0, reach: 0, profileVisits: 0, impressions: 0 };
+    const accountMetrics = metrics[0] || { followers: 0, reach: 0, profileVisits: 0, impressions: 0 };
 
     // Fetch active goal
     const goals = await sql`SELECT * FROM admin_goals WHERE social_account_id = ${accountId} AND is_active = true LIMIT 1`;
-    const g = goals[0];
-    const goal = g ? {
-      ...g,
-      goalType: g.goal_type,
-      primaryMetric: g.primary_metric,
-      secondaryMetrics: g.secondary_metrics,
-      businessOutcome: g.business_outcome,
-      autonomyLevel: g.autonomy_level
-    } : null;
+    const goal = goals[0] || null;
     
     // Fetch upcoming posts
-    const upcomingPostsRaw = await sql`SELECT * FROM posts WHERE social_account_id = ${accountId} AND status = 'scheduled' ORDER BY scheduled_at ASC LIMIT 5`;
-    const upcomingPosts = upcomingPostsRaw.map(p => ({
-      ...p,
-      socialAccountId: p.social_account_id,
-      mediaType: p.media_type,
-      scheduledAt: p.scheduled_at,
-      publishedAt: p.published_at,
-      agentRunId: p.agent_run_id
-    }));
+    const upcomingPosts = await sql`SELECT * FROM posts WHERE social_account_id = ${accountId} AND status = 'scheduled' ORDER BY scheduled_at ASC LIMIT 5`;
 
     // Fetch metric history for chart
-    const metricsHistoryRaw = await sql`SELECT followers, reach, impressions, profile_visits, captured_at FROM account_metrics WHERE social_account_id = ${accountId} ORDER BY captured_at ASC LIMIT 7`;
-    const metricsHistory = metricsHistoryRaw.map(m => ({
-      followers: m.followers,
-      reach: m.reach,
-      impressions: m.impressions,
-      profileVisits: m.profile_visits,
-      capturedAt: m.captured_at
-    }));
+    const metricsHistory = await sql`SELECT followers, reach, impressions, profile_visits, captured_at FROM account_metrics WHERE social_account_id = ${accountId} ORDER BY captured_at ASC LIMIT 7`;
 
     return {
       success: true,
@@ -88,8 +59,9 @@ export default async function dashboardRoutes(app: FastifyInstance) {
       return { success: true, data: { state: 'idle', recentDecisions: [] } };
     }
 
-    const runs = await sql`SELECT run_type, status FROM agent_runs WHERE social_account_id = ${accountId} ORDER BY started_at DESC LIMIT 1`;
-    const activeRun = runs[0]?.status === 'running' ? runs[0] : null;
+    const runs = await sql`SELECT run_type, status, started_at FROM agent_runs WHERE social_account_id = ${accountId} ORDER BY started_at DESC LIMIT 1`;
+    const r = runs[0];
+    const activeRun = r?.status === 'running' ? r : null;
     const state = activeRun ? 'running' : 'idle';
 
     const recentDecisions = await sql`
@@ -102,26 +74,33 @@ export default async function dashboardRoutes(app: FastifyInstance) {
     `;
 
     // Fetch scheduled jobs
-    const scheduledJobsRaw = await sql`SELECT id, job_type, status, scheduled_for FROM scheduled_jobs ORDER BY scheduled_for ASC LIMIT 5`;
-    const scheduledJobs = scheduledJobsRaw.map(j => ({
-      id: j.id,
-      jobType: j.job_type,
-      status: j.status,
-      scheduledFor: j.scheduled_for
-    }));
+    const scheduledJobs = await sql`SELECT id, job_type, status, scheduled_for FROM scheduled_jobs ORDER BY scheduled_for ASC LIMIT 5`;
 
     // Fetch recent errors from agent_runs
     const recentErrorsRaw = await sql`
-      SELECT error->>'message' as message, started_at as timestamp 
+      SELECT error, started_at as timestamp 
       FROM agent_runs 
       WHERE social_account_id = ${accountId} AND error IS NOT NULL 
       ORDER BY started_at DESC 
       LIMIT 5
     `;
-    const recentErrors = recentErrorsRaw.map(e => ({
-      message: e.message || 'Unknown error',
-      timestamp: e.timestamp
-    }));
+    const recentErrors = recentErrorsRaw.map(e => {
+      let msg = 'Unknown error';
+      if (typeof e.error === 'string') {
+        try {
+          const parsed = JSON.parse(e.error);
+          msg = parsed.message || e.error;
+        } catch {
+          msg = e.error;
+        }
+      } else if (e.error && typeof e.error === 'object') {
+        msg = e.error.message || JSON.stringify(e.error);
+      }
+      return {
+        message: msg,
+        timestamp: e.timestamp
+      };
+    });
 
     return {
       success: true,
@@ -158,16 +137,36 @@ export default async function dashboardRoutes(app: FastifyInstance) {
       return { success: true, data: null };
     }
 
-    const strategies = await sql`
+    const strategiesRaw = await sql`
       SELECT * FROM strategy_versions 
       WHERE social_account_id = ${accountId} 
       ORDER BY version_number DESC 
-      LIMIT 1
     `;
+    const history = strategiesRaw.map(s => {
+      const parseJson = (val: any) => typeof val === 'string' ? JSON.parse(val) : val;
+      return {
+        ...s,
+        objective: parseJson(s.objective),
+        contentMix: parseJson(s.contentMix),
+        cadence: parseJson(s.cadence),
+        experimentPlan: parseJson(s.experimentPlan),
+        evidenceIds: parseJson(s.evidenceIds)
+      };
+    });
+    const active = history.find(s => s.status === 'active') || history[0] || null;
+
+    const insights = await sql`SELECT * FROM strategic_insights WHERE social_account_id = ${accountId} ORDER BY created_at DESC LIMIT 10`;
+
+    const experiments = await sql`SELECT * FROM experiments WHERE social_account_id = ${accountId} ORDER BY created_at DESC LIMIT 10`;
 
     return {
       success: true,
-      data: strategies[0] || null
+      data: {
+        active,
+        history,
+        insights,
+        experiments
+      }
     };
   });
 }
