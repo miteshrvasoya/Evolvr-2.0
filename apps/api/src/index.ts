@@ -57,6 +57,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   const systemRoutes = await import('./modules/system/system.routes.js');
   const frontendRoutes = await import('./modules/system/frontend.routes.js');
   const settingsRoutes = await import('./modules/system/settings.routes.js');
+  const contentRoutes = await import('./modules/content/content.routes.js');
   const apiLoggerMiddleware = await import('./modules/common/api-logger.middleware.js');
   const { LoggerService } = await import('./modules/common/logger.service.js');
 
@@ -88,6 +89,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(systemRoutes.default, { prefix: '/api' });
   await app.register(frontendRoutes.default, { prefix: '/api' });
   await app.register(settingsRoutes.default, { prefix: '/api' });
+  await app.register(contentRoutes.default, { prefix: '/api' });
 
   // Health check endpoint
   app.get('/health', async () => {
