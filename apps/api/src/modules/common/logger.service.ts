@@ -21,10 +21,10 @@ interface ErrorLogData {
 const redactSensitiveData = (data: any): any => {
   if (!data) return data;
   if (typeof data !== 'object') return data;
-  
+
   const redacted = { ...data };
   const sensitiveKeys = ['password', 'token', 'authorization', 'apiKey', 'api_key', 'client_secret', 'secret'];
-  
+
   for (const key of Object.keys(redacted)) {
     if (sensitiveKeys.some(sk => key.toLowerCase().includes(sk.toLowerCase()))) {
       redacted[key] = '[REDACTED]';
@@ -56,6 +56,15 @@ export class LoggerService {
     `.catch(err => {
       console.error('[LoggerService] Failed to insert API log:', err);
     });
+
+    console.log("------------------------------------------------------------------------------");
+    // console.log("API CALL", data);
+    console.log("------------------------------------------------------------------------------");
+    if (data.direction === 'outward') {
+      const statusColor = data.statusCode >= 400 ? '\x1b[31m' : '\x1b[32m'; // Red or Green
+      const resetColor = '\x1b[0m';
+      console.info(`[Outward API] ${data.method} ${data.url} - ${statusColor}${data.statusCode}${resetColor} in ${data.latencyMs}ms`);
+    }
   }
 
   /**
