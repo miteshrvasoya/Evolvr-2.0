@@ -1,8 +1,10 @@
 import { sql } from '../../db/client.js';
 import { StrategyAgent } from './strategy.agent.js';
+import { ContentAgent } from './content.agent.js';
 
 export class OrchestratorAgent {
   private strategyAgent = new StrategyAgent();
+  private contentAgent = new ContentAgent();
 
   async runDailyCycle(socialAccountId: string) {
     console.log(`[Orchestrator] Starting daily cycle for account: ${socialAccountId}`);
@@ -38,8 +40,8 @@ export class OrchestratorAgent {
       
       const draftedCount = await sql`SELECT COUNT(*) as count FROM content_ideas WHERE social_account_id = ${socialAccountId} AND status = 'draft'`;
       if (Number(draftedCount[0].count) < 5) {
-        console.log(`[Orchestrator] Low content buffer. Queuing Content Generation job.`);
-        // In full implementation, this drops a job into BullMQ `content-generation` queue
+        console.log(`[Orchestrator] Low content buffer. Generating Content Plan...`);
+        await this.contentAgent.generateContentPlan(socialAccountId, currentStrategyId);
       }
 
       // 4. Analytics & Learning Sync

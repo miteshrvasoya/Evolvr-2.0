@@ -24,7 +24,7 @@ export class OpenRouterAdapter implements LLMProvider {
   async generateText(request: LLMRequest): Promise<LLMResponse> {
     const start = Date.now();
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 seconds
+    const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minutes
 
     let response;
     try {
@@ -53,7 +53,7 @@ export class OpenRouterAdapter implements LLMProvider {
   async generateStructured<T>(request: StructuredLLMRequest<T>): Promise<LLMResponse<T>> {
     const start = Date.now();
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 seconds
+    const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minutes
 
     let response;
     try {

@@ -22,11 +22,12 @@ export default async function agentRoutes(app: FastifyInstance) {
       return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'No primary account found' } });
     }
 
-    // Run async so we don't block the request if it takes long, or await if we want immediate feedback
-    // We will await for the scaffold so UI gets immediate feedback
-    const result = await orchestrator.runDailyCycle(accountId);
+    // Run async so we don't block the request if it takes long
+    orchestrator.runDailyCycle(accountId).catch(err => {
+      app.log.error('Background daily cycle failed:', err);
+    });
 
-    return { success: true, data: result };
+    return { success: true, data: { status: 'started' } };
   });
 
   // Get Agent Decisions (for the Thinking Page)
