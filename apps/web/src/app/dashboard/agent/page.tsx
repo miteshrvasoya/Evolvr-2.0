@@ -1,9 +1,10 @@
 'use client';
 
-import { PlayCircle, Loader2, AlertCircle, Clock } from 'lucide-react';
+import { PlayCircle, Loader2, AlertCircle, Clock, Bot } from 'lucide-react';
 import { useState } from 'react';
 import { useAgentStatus } from '@/lib/hooks/use-agent-status';
 import { useStrategy } from '@/lib/hooks/use-strategy';
+import { AgentProgressSteps } from '@/components/dashboard/agent-progress-steps';
 import { AgentStateBadge, stateConfig } from '@/components/dashboard/agent-state-badge';
 import { ContentMixChart } from '@/components/dashboard/content-mix-chart';
 import { DecisionLogEntry } from '@/components/dashboard/decision-log-entry';
@@ -50,34 +51,38 @@ export default function AgentPage() {
 
   return (
     <div className="space-y-6">
-      {/* Current State */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-3 mb-2">
-                <AgentStateBadge state={status.state} className="text-sm px-3 py-1" />
-              </div>
-              <p className="text-muted-foreground text-sm">
+      {/* Header & Trigger */}
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-3xl font-bold tracking-tight">Agent Control Center</h2>
+          <Button onClick={handleTrigger} disabled={status?.state === 'running' || triggering}>
+            {triggering ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <PlayCircle className="mr-2 h-4 w-4" />
+            )}
+            Run Daily Cycle Now
+          </Button>
+        </div>
+
+        {status && (
+          <div className="flex flex-col gap-3 rounded-lg border bg-card p-4">
+            <div className="flex items-center gap-3">
+              <Bot className="h-5 w-5 text-primary" />
+              <span className="text-sm font-medium">Agent Status:</span>
+              <AgentStateBadge state={status.state} />
+              <span className="text-sm text-muted-foreground ml-2">
                 {status.currentRun
                   ? `Currently running: ${status.currentRun.runType.replace(/_/g, ' ')} (started ${formatDateTime(status.currentRun.startedAt)})`
-                  : 'No active run'}
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Last updated: {formatDateTime(status.lastUpdated)}
-              </p>
+                  : 'Idle'}
+              </span>
             </div>
-            <Button onClick={handleTrigger} disabled={triggering}>
-              {triggering ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <PlayCircle className="mr-2 h-4 w-4" />
-              )}
-              Run Daily Cycle Now
-            </Button>
+            {status.currentRun?.progress && status.currentRun.progress.length > 0 && (
+              <AgentProgressSteps steps={status.currentRun.progress} />
+            )}
           </div>
-        </CardContent>
-      </Card>
+        )}
+      </div>
 
       {/* Strategy + Decisions */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

@@ -59,10 +59,28 @@ export default async function dashboardRoutes(app: FastifyInstance) {
       return { success: true, data: { state: 'idle', recentDecisions: [] } };
     }
 
-    const runs = await sql`SELECT run_type, status, started_at FROM agent_runs WHERE social_account_id = ${accountId} ORDER BY started_at DESC LIMIT 1`;
+    const runs = await sql`SELECT run_type, status, started_at, progress FROM agent_runs WHERE social_account_id = ${accountId} ORDER BY started_at DESC LIMIT 1`;
     const r = runs[0];
-    const activeRun = r?.status === 'running' ? r : null;
-    const state = activeRun ? 'running' : 'idle';
+    
+    let parsedProgress = [];
+    if (r?.progress) {
+      try {
+        parsedProgress = typeof r.progress === 'string' ? JSON.parse(r.progress) : r.progress;
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    // NOTE: postgres.camel transform is enabled!
+    // The db driver automatically converts snake_case to camelCase.
+    // e.g. run_type -> r.runType, started_at -> r.startedAt
+    const activeRun = r?.status === 'running' || r?.status === 'failed' ? {
+      runType: r.runType,
+      status: r.status,
+      startedAt: r.startedAt,
+      progress: parsedProgress
+    } : null;
+    const state = r?.status === 'running' ? 'running' : 'idle';
 
     const recentDecisions = await sql`
       SELECT ad.*, ar.started_at, ar.run_type

@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { sql } from '../../db/client.js';
 import { getLLMProvider } from '../llm/index.js';
 import { buildStrategyPrompt, BuildStrategyContext } from '../../prompts/strategy.v1.js';
+import { AgentRunTracker } from './agent-tracker.js';
 
 export class StrategyAgent {
   private llm = getLLMProvider();
@@ -15,7 +16,10 @@ export class StrategyAgent {
       VALUES (${runId}, 'STRATEGY_REVISION', ${socialAccountId}, 'running')
     `;
 
+    const tracker = new AgentRunTracker(runId);
+
     try {
+      await tracker.trackStep('Fetching Context', 'running');
       // 2. Fetch Context
       // Fetch Account Profile
       const profiles = await sql`SELECT * FROM account_profiles WHERE social_account_id = ${socialAccountId}`;
@@ -43,6 +47,8 @@ export class StrategyAgent {
         experimentResults: '[]', // Mock
       };
 
+      await tracker.trackStep('Fetching Context', 'completed');
+      await tracker.trackStep('Generating Strategy', 'running');
       // 3. Generate Prompt & Call LLM
       const prompt = buildStrategyPrompt(context);
       const llmResponse = await this.llm.generateStructured(prompt);
@@ -53,6 +59,9 @@ export class StrategyAgent {
 
       const strategyData = llmResponse.structured;
 
+      await tracker.trackStep('Generating Strategy', 'completed');
+      await tracker.trackStep('Saving Strategy', 'running');
+      
       // 4. Save Strategy Version
       const existingVersions = await sql`SELECT COUNT(*) as count FROM strategy_versions WHERE social_account_id = ${socialAccountId}`;
       const nextVersion = Number(existingVersions[0].count) + 1;
@@ -71,15 +80,19 @@ export class StrategyAgent {
         ) RETURNING id
       `;
 
-      // 5. Save Decision Log
+      const strategyId = insertedStrategy[0].id;
+
+      // 5. Record Decision
       await sql`
-        INSERT INTO agent_decisions (
-          agent_run_id, decision_type, decision, evidence, confidence, reasoning
-        ) VALUES (
-          ${runId}, 'CREATE_STRATEGY_VERSION', ${strategyData}, ${strategyData.evidenceIds}, 
+        INSERT INTO agent_decisions (id, agent_run_id, decision_type, decision, confidence, reasoning)
+        VALUES (
+          ${randomUUID()}, ${runId}, 'REVISE_STRATEGY',
+          ${sql.json({ strategyId, versionNumber: nextVersion })},
           ${strategyData.confidence}, ${strategyData.rationale}
         )
       `;
+
+      await tracker.trackStep('Saving Strategy', 'completed');
 
       // 6. Complete Run
       await sql`
@@ -91,6 +104,12 @@ export class StrategyAgent {
       return { success: true, strategyId: insertedStrategy[0].id };
 
     } catch (error: any) {
+      await tracker.completeCurrentStep(); // Will leave it running but actually we want to fail it
+      const currentStep = (await sql`SELECT progress FROM agent_runs WHERE id = ${runId}`)[0]?.progress?.find((s: any) => s.status === 'running')?.step;
+      if (currentStep) {
+        await tracker.trackStep(currentStep, 'failed', error.message);
+      }
+      
       await sql`
         UPDATE agent_runs 
         SET status = 'failed', completed_at = NOW(), error = ${sql.json({ message: error.message })}

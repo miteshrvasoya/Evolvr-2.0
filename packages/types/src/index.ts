@@ -489,6 +489,13 @@ export type AgentRunType =
 
 export type AgentRunStatus = 'running' | 'completed' | 'failed' | 'blocked' | 'waiting_approval';
 
+export interface AgentStep {
+  step: string;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  error?: string;
+  timestamp: ISO8601;
+}
+
 export interface AgentRun {
   id: UUID;
   runType: AgentRunType;
@@ -499,6 +506,7 @@ export interface AgentRun {
   inputSnapshot: JsonObject;
   output: JsonObject | null;
   error: { message: string; stack?: string } | null;
+  progress?: AgentStep[];
   correlationId: string;
 }
 

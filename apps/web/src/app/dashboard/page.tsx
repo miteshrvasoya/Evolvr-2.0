@@ -7,6 +7,7 @@ import { MetricCard } from '@/components/dashboard/metric-card';
 import { GoalProgress } from '@/components/dashboard/goal-progress';
 import { GrowthChart } from '@/components/dashboard/growth-chart';
 import { AgentStateBadge } from '@/components/dashboard/agent-state-badge';
+import { AgentProgressSteps } from '@/components/dashboard/agent-progress-steps';
 import { PostStatusBadge } from '@/components/dashboard/post-status-badge';
 import { DecisionLogEntry } from '@/components/dashboard/decision-log-entry';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -42,14 +43,19 @@ export default function DashboardPage() {
     <div className="space-y-6">
       {/* Agent Status Banner */}
       {agentStatus && (
-        <div className="flex items-center gap-3 rounded-lg border bg-card p-4">
-          <Bot className="h-5 w-5 text-primary" />
-          <span className="text-sm font-medium">Agent Status:</span>
-          <AgentStateBadge state={agentStatus.state} />
-          {agentStatus.currentRun && (
-            <span className="text-sm text-muted-foreground ml-2">
-              Running: {agentStatus.currentRun.runType.replace(/_/g, ' ')}
-            </span>
+        <div className="flex flex-col gap-3 rounded-lg border bg-card p-4">
+          <div className="flex items-center gap-3">
+            <Bot className="h-5 w-5 text-primary" />
+            <span className="text-sm font-medium">Agent Status:</span>
+            <AgentStateBadge state={agentStatus.state} />
+            {agentStatus.currentRun && (
+              <span className="text-sm text-muted-foreground ml-2">
+                Running: {agentStatus.currentRun.runType.replace(/_/g, ' ')}
+              </span>
+            )}
+          </div>
+          {agentStatus.currentRun?.progress && agentStatus.currentRun.progress.length > 0 && (
+            <AgentProgressSteps steps={agentStatus.currentRun.progress} />
           )}
         </div>
       )}

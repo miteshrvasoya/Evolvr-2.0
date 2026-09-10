@@ -223,6 +223,7 @@ CREATE TABLE IF NOT EXISTS agent_runs (
   input_snapshot JSONB NOT NULL DEFAULT '{}',
   output JSONB,
   error JSONB,
+  progress JSONB DEFAULT '[]',
   correlation_id TEXT
 );
 

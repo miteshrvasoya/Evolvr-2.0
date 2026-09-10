@@ -23,15 +23,23 @@ export class OpenRouterAdapter implements LLMProvider {
 
   async generateText(request: LLMRequest): Promise<LLMResponse> {
     const start = Date.now();
-    const response = await this.client.chat.completions.create({
-      model: this.defaultModel,
-      messages: [
-        { role: 'system', content: request.systemPrompt },
-        { role: 'user', content: request.userPrompt },
-      ],
-      temperature: request.temperature ?? 0.7,
-      max_tokens: request.maxTokens,
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 seconds
+
+    let response;
+    try {
+      response = await this.client.chat.completions.create({
+        model: this.defaultModel,
+        messages: [
+          { role: 'system', content: request.systemPrompt },
+          { role: 'user', content: request.userPrompt },
+        ],
+        temperature: request.temperature ?? 0.7,
+        max_tokens: request.maxTokens,
+      }, { signal: controller.signal });
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     return {
       content: response.choices[0]?.message?.content || '',
@@ -44,18 +52,26 @@ export class OpenRouterAdapter implements LLMProvider {
 
   async generateStructured<T>(request: StructuredLLMRequest<T>): Promise<LLMResponse<T>> {
     const start = Date.now();
-    const response = await this.client.chat.completions.create({
-      model: this.strongModel, // Use strong model for structured outputs/reasoning
-      messages: [
-        { role: 'system', content: request.systemPrompt },
-        { role: 'user', content: request.userPrompt },
-      ],
-      temperature: request.temperature ?? 0.2,
-      max_tokens: request.maxTokens,
-      response_format: zodResponseFormat(request.outputSchema, request.schemaName),
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 seconds
 
-      const content = response.choices[0]?.message?.content || '';
+    let response;
+    try {
+      response = await this.client.chat.completions.create({
+        model: this.strongModel, // Use strong model for structured outputs/reasoning
+        messages: [
+          { role: 'system', content: request.systemPrompt },
+          { role: 'user', content: request.userPrompt },
+        ],
+        temperature: request.temperature ?? 0.2,
+        max_tokens: request.maxTokens,
+        response_format: zodResponseFormat(request.outputSchema, request.schemaName),
+      }, { signal: controller.signal });
+    } finally {
+      clearTimeout(timeoutId);
+    }
+
+    const content = response.choices[0]?.message?.content || '';
     let structured: T | undefined;
 
     try {
