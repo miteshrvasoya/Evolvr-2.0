@@ -2,6 +2,7 @@ import OpenAI from 'openai';
 import { zodResponseFormat } from 'openai/helpers/zod';
 import { env } from '../../../config/env.js';
 import { LLMProvider, LLMRequest, LLMResponse, StructuredLLMRequest } from '../llm.types.js';
+import { LoggerService } from '../../common/logger.service.js';
 
 export class OpenRouterAdapter implements LLMProvider {
   private client: OpenAI;
@@ -37,12 +38,34 @@ export class OpenRouterAdapter implements LLMProvider {
         temperature: request.temperature ?? 0.7,
         max_tokens: request.maxTokens,
       }, { signal: controller.signal });
+    } catch (e: any) {
+      LoggerService.logError({
+        errorMessage: e.message || 'LLM API Error',
+        stackTrace: e.stack,
+        context: {
+          action: 'OpenRouterAdapter.generateText',
+          model: this.defaultModel
+        }
+      });
+      throw e;
     } finally {
       clearTimeout(timeoutId);
     }
 
+    const content = response.choices[0]?.message?.content || '';
+
+    LoggerService.logApiCall({
+      direction: 'outward',
+      method: 'POST',
+      url: `${env.OPENROUTER_BASE_URL}/chat/completions`,
+      statusCode: 200,
+      requestPayload: { model: this.defaultModel, userPrompt: request.userPrompt },
+      responsePayload: { content },
+      latencyMs: Date.now() - start
+    });
+
     return {
-      content: response.choices[0]?.message?.content || '',
+      content,
       model: response.model,
       inputTokens: response.usage?.prompt_tokens || 0,
       outputTokens: response.usage?.completion_tokens || 0,
@@ -67,11 +90,32 @@ export class OpenRouterAdapter implements LLMProvider {
         max_tokens: request.maxTokens,
         response_format: zodResponseFormat(request.outputSchema, request.schemaName),
       }, { signal: controller.signal });
+    } catch (e: any) {
+      LoggerService.logError({
+        errorMessage: e.message || 'LLM API Error',
+        stackTrace: e.stack,
+        context: {
+          action: 'OpenRouterAdapter.generateStructured',
+          model: this.strongModel,
+          schemaName: request.schemaName
+        }
+      });
+      throw e;
     } finally {
       clearTimeout(timeoutId);
     }
 
     const content = response.choices[0]?.message?.content || '';
+    
+    LoggerService.logApiCall({
+      direction: 'outward',
+      method: 'POST',
+      url: `${env.OPENROUTER_BASE_URL}/chat/completions`,
+      statusCode: 200,
+      requestPayload: { model: this.strongModel, schema: request.schemaName, userPrompt: request.userPrompt },
+      responsePayload: { content },
+      latencyMs: Date.now() - start
+    });
     let structured: T | undefined;
 
     try {

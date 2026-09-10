@@ -57,9 +57,28 @@ export async function buildApp(): Promise<FastifyInstance> {
   const systemRoutes = await import('./modules/system/system.routes.js');
   const frontendRoutes = await import('./modules/system/frontend.routes.js');
   const settingsRoutes = await import('./modules/system/settings.routes.js');
-  const auditMiddleware = await import('./modules/common/audit.middleware.js');
+  const apiLoggerMiddleware = await import('./modules/common/api-logger.middleware.js');
+  const { LoggerService } = await import('./modules/common/logger.service.js');
 
-  auditMiddleware.default(app);
+  apiLoggerMiddleware.default(app);
+
+  app.setErrorHandler((error, request, reply) => {
+    app.log.error(error);
+    const user = (request as any).user;
+    LoggerService.logError({
+      errorMessage: error.message || 'Unknown error',
+      stackTrace: error.stack,
+      context: {
+        url: request.url,
+        method: request.method,
+        body: request.body,
+        query: request.query,
+        params: request.params
+      },
+      userId: user?.id
+    });
+    reply.status(error.statusCode || 500).send({ error: error.message || 'Internal Server Error' });
+  });
 
   await app.register(socialRoutes.default, { prefix: '/api' });
   await app.register(oauthRoutes.default, { prefix: '/api' });

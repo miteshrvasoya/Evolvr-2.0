@@ -1,7 +1,39 @@
 import { env } from '../../../config/env.js';
+import { LoggerService } from '../../common/logger.service.js';
 
 export class InstagramAdapter {
   private readonly baseUrl = `https://graph.instagram.com/${env.INSTAGRAM_API_VERSION}`;
+
+  private async fetchWithLog(url: string, options: RequestInit = {}) {
+    const start = Date.now();
+    try {
+      const response = await fetch(url, options);
+      const data = await response.json().catch(() => ({}));
+      
+      LoggerService.logApiCall({
+        direction: 'outward',
+        method: options.method || 'GET',
+        url,
+        statusCode: response.status,
+        requestPayload: options.body ? Object.fromEntries(new URLSearchParams(options.body as string)) : undefined,
+        responsePayload: data,
+        latencyMs: Date.now() - start
+      });
+
+      return { response, data };
+    } catch (error: any) {
+      LoggerService.logError({
+        errorMessage: error.message || 'Instagram API Error',
+        stackTrace: error.stack,
+        context: {
+          action: 'InstagramAdapter.fetchWithLog',
+          url,
+          method: options.method || 'GET'
+        }
+      });
+      throw error;
+    }
+  }
 
   async getAuthUrl(redirectUri: string): Promise<string> {
     const scope = 'instagram_business_basic,instagram_business_content_publish,instagram_business_manage_insights,instagram_business_manage_comments';
@@ -22,18 +54,16 @@ export class InstagramAdapter {
       code,
     });
 
-    const response = await fetch(url, { method: 'POST', body: formData });
-    const data = await response.json();
+    const { response, data } = await this.fetchWithLog(url, { method: 'POST', body: formData });
 
     if (!response.ok) throw new Error(data.error_message || data.error?.message || 'Failed to exchange token');
 
     const shortToken = data.access_token;
-    const platformAccountId = data.user_id.toString();
+    const platformAccountId = data.user_id?.toString();
 
     // Exchange for long-lived token
     const llUrl = `https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${appSecret}&access_token=${shortToken}`;
-    const llResponse = await fetch(llUrl);
-    const llData = await llResponse.json();
+    const { response: llResponse, data: llData } = await this.fetchWithLog(llUrl);
 
     if (!llResponse.ok) throw new Error(llData.error?.message || 'Failed to get long-lived token');
 
@@ -46,8 +76,7 @@ export class InstagramAdapter {
 
   async getAccountProfile(accessToken: string, platformAccountId: string) {
     const url = `${this.baseUrl}/me?fields=username,name,profile_picture_url,followers_count&access_token=${accessToken}`;
-    const response = await fetch(url);
-    const data = await response.json();
+    const { response, data } = await this.fetchWithLog(url);
     if (!response.ok) throw new Error(data.error?.message || 'Failed to fetch profile');
 
     return {
@@ -67,8 +96,7 @@ export class InstagramAdapter {
       access_token: accessToken,
     });
 
-    const createRes = await fetch(`${createUrl}?${createParams.toString()}`, { method: 'POST' });
-    const createData = await createRes.json();
+    const { response: createRes, data: createData } = await this.fetchWithLog(`${createUrl}?${createParams.toString()}`, { method: 'POST' });
     if (!createRes.ok) throw new Error(createData.error?.message || 'Failed to create media container');
 
     const creationId = createData.id;
@@ -83,8 +111,7 @@ export class InstagramAdapter {
       access_token: accessToken,
     });
 
-    const publishRes = await fetch(`${publishUrl}?${publishParams.toString()}`, { method: 'POST' });
-    const publishData = await publishRes.json();
+    const { response: publishRes, data: publishData } = await this.fetchWithLog(`${publishUrl}?${publishParams.toString()}`, { method: 'POST' });
     if (!publishRes.ok) throw new Error(publishData.error?.message || 'Failed to publish media');
 
     return {
@@ -95,8 +122,7 @@ export class InstagramAdapter {
 
   async getPostInsights(accessToken: string, platformPostId: string) {
     const url = `${this.baseUrl}/${platformPostId}/insights?metric=impressions,reach,saved,video_views&access_token=${accessToken}`;
-    const response = await fetch(url);
-    const data = await response.json();
+    const { response, data } = await this.fetchWithLog(url);
     if (!response.ok) return null;
 
     const metrics: Record<string, number> = {};
