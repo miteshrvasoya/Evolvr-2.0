@@ -2,6 +2,7 @@
 
 import { PlayCircle, Loader2, AlertCircle, Clock, Bot } from 'lucide-react';
 import { useState } from 'react';
+import { formatDistanceToNow } from 'date-fns';
 import { useAgentStatus } from '@/lib/hooks/use-agent-status';
 import { useStrategy } from '@/lib/hooks/use-strategy';
 import { AgentProgressSteps } from '@/components/dashboard/agent-progress-steps';
@@ -13,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { formatDateTime } from '@/lib/utils';
+import { formatDateTime, cn } from '@/lib/utils';
 import { toast } from '@/lib/hooks/use-toast';
 
 export default function AgentPage() {

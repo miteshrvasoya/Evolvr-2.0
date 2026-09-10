@@ -134,10 +134,30 @@ export class OpenRouterAdapter implements LLMProvider {
 
     try {
       if (content) {
-        structured = JSON.parse(content) as T;
+        // Strip markdown blocks if present
+        let cleanContent = content;
+        const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+        if (jsonMatch) {
+          cleanContent = jsonMatch[1].trim();
+        } else {
+          // If no markdown, strip text before first { or [ and after last } or ]
+          const startIdx = Math.min(
+            cleanContent.indexOf('{') === -1 ? Infinity : cleanContent.indexOf('{'),
+            cleanContent.indexOf('[') === -1 ? Infinity : cleanContent.indexOf('[')
+          );
+          const endIdx = Math.max(
+            cleanContent.lastIndexOf('}'),
+            cleanContent.lastIndexOf(']')
+          );
+          if (startIdx !== Infinity && endIdx !== -1 && endIdx >= startIdx) {
+            cleanContent = cleanContent.substring(startIdx, endIdx + 1);
+          }
+        }
+        
+        structured = JSON.parse(cleanContent.trim()) as T;
       }
     } catch (e) {
-      throw new Error(`Failed to parse structured output: ${e}`);
+      throw new Error(`Failed to parse structured output: ${e}. Raw content: ${content.substring(0, 50)}...`);
     }
 
     const latencyMs = Date.now() - start;
