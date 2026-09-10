@@ -43,6 +43,7 @@ export default async function dashboardRoutes(app: FastifyInstance) {
     return {
       success: true,
       data: {
+        accountId,
         accountMetrics,
         goal,
         upcomingPosts,

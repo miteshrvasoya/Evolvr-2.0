@@ -5,6 +5,7 @@ import { apiClient } from '@/lib/api-client';
 import type { AccountMetrics, AdminGoal, Post } from '@evolvr/types';
 
 interface DashboardOverview {
+  accountId?: string;
   accountMetrics: AccountMetrics;
   goal: AdminGoal | null;
   upcomingPosts: Post[];
@@ -18,10 +19,22 @@ export function useDashboard() {
     '/api/dashboard/overview',
     fetcher, { revalidateOnFocus: false, revalidateOnReconnect: false });
 
+  const syncAnalytics = async (accountId: string) => {
+    try {
+      await apiClient.post(`/api/accounts/${accountId}/analytics/sync`);
+      await mutate();
+      return true;
+    } catch (e) {
+      console.error('Failed to sync analytics', e);
+      return false;
+    }
+  };
+
   return {
     data,
     error,
     isLoading,
     refresh: mutate,
+    syncAnalytics,
   };
 }

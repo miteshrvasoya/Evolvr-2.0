@@ -147,4 +147,27 @@ export class InstagramAdapter {
       // Likes and comments come from the media node, not insights
     };
   }
+
+  async getAccountInsights(accessToken: string, platformAccountId: string) {
+    const url = `${this.baseUrl}/${platformAccountId}/insights?metric=impressions,reach,profile_views&period=day&access_token=${accessToken}`;
+    const { response, data } = await this.fetchWithLog(url);
+    if (!response.ok) {
+      LoggerService.logError({
+        errorMessage: data?.error?.message || 'Failed to fetch account insights',
+        context: { platformAccountId }
+      });
+      return { impressions: 0, reach: 0, profile_views: 0 };
+    }
+
+    const metrics: Record<string, number> = {};
+    for (const item of data.data || []) {
+      metrics[item.name] = item.values[0]?.value || 0;
+    }
+
+    return {
+      impressions: metrics.impressions || 0,
+      reach: metrics.reach || 0,
+      profile_views: metrics.profile_views || 0,
+    };
+  }
 }

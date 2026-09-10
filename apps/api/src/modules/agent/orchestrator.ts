@@ -10,7 +10,7 @@ export class OrchestratorAgent {
     console.log(`\n======================================================`);
     console.log(`[Orchestrator] Starting daily cycle for account: ${socialAccountId}`);
     console.log(`======================================================\n`);
-    
+
     try {
       // 1. Check for Active Goal
       const goals = await sql`SELECT id FROM admin_goals WHERE social_account_id = ${socialAccountId} AND is_active = true LIMIT 1`;
@@ -25,7 +25,7 @@ export class OrchestratorAgent {
 
       // 2. Check Strategy Status (Do we have an active strategy?)
       const strategies = await sql`SELECT id FROM strategy_versions WHERE social_account_id = ${socialAccountId} AND status = 'active' LIMIT 1`;
-      
+
       let currentStrategyId = strategies[0]?.id;
 
       if (!currentStrategyId) {
@@ -43,7 +43,7 @@ export class OrchestratorAgent {
       // (Simplified logic for scaffold)
       console.log(`[Orchestrator] Evaluating content pipeline buffer...`);
       const draftedCount = await sql`SELECT COUNT(*) as count FROM content_ideas WHERE social_account_id = ${socialAccountId} AND status = 'draft'`;
-      
+
       console.log(`[Orchestrator] Current drafted content count: ${draftedCount[0].count}`);
       if (Number(draftedCount[0].count) < 5) {
         console.log(`[Orchestrator] Low content buffer detected (< 5). Generating Content Plan...`);
@@ -55,7 +55,7 @@ export class OrchestratorAgent {
       // 4. Analytics & Learning Sync
       console.log(`[Orchestrator] Queuing daily analytics sync...`);
       // Drops a job into BullMQ `analytics` queue
-      
+
       console.log(`\n======================================================`);
       console.log(`[Orchestrator] Daily cycle completed successfully!`);
       console.log(`======================================================\n`);
