@@ -9,6 +9,8 @@ import {
   ContentIdeationContext,
   CaptionGenerationContext
 } from '../../prompts/content.v1.js';
+import { getMediaProvider } from '../media/index.js';
+import { LocalStorageAdapter } from '../storage/local.adapter.js';
 
 export class ContentAgent {
   private llm = getLLMProvider();
@@ -137,6 +139,53 @@ export class ContentAgent {
             ${captionData?.altText || null}, ${JSON.stringify({ reason: idea.rationale })}, ${JSON.stringify(policyDecision)}, ${initialStatus}
           )
         `;
+
+        if (initialStatus !== 'blocked') {
+          const msgMedia = `[ContentAgent] Generating media asset for idea ${ideaId}...`;
+          console.log(msgMedia);
+          await tracker.addLog(msgMedia);
+          
+          try {
+            const mediaProvider = getMediaProvider();
+            const storageAdapter = new LocalStorageAdapter();
+            
+            let mediaResult;
+            let assetType = 'image';
+            
+            if (idea.format === 'reel' || idea.format === 'story') {
+              mediaResult = await mediaProvider.generateReelPlaceholder(captionData?.imagePrompt || idea.concept);
+              assetType = 'video_placeholder';
+            } else {
+              mediaResult = await mediaProvider.generateImage(captionData?.imagePrompt || idea.concept);
+            }
+            
+            // Save to local storage
+            const filename = `media_${ideaId}_${Date.now()}.gif`; // Currently GIF from stub
+            const storageUrl = await storageAdapter.saveFile(filename, mediaResult.buffer);
+            
+            const mediaMetadata = {
+              ...mediaResult.metadata,
+              videoScript: captionData?.videoScript,
+              imagePrompt: captionData?.imagePrompt
+            };
+            
+            // Link to content_ideas
+            await sql`
+              INSERT INTO content_assets (
+                content_idea_id, asset_type, storage_url, mime_type, prompt, generation_metadata
+              ) VALUES (
+                ${ideaId}, ${assetType}, ${storageUrl}, ${mediaResult.mimeType}, ${captionData?.imagePrompt || null}, ${JSON.stringify(mediaMetadata)}
+              )
+            `;
+            const msgMediaComplete = `[ContentAgent] Media asset generated and saved to ${storageUrl}.`;
+            console.log(msgMediaComplete);
+            await tracker.addLog(msgMediaComplete);
+          } catch (mediaError: any) {
+            const msgMediaFail = `[ContentAgent] Warning: Failed to generate media asset: ${mediaError.message}`;
+            console.error(msgMediaFail);
+            await tracker.addLog(msgMediaFail);
+          }
+        }
       }
       
       const msg8 = `[ContentAgent] Content generation cycle complete. ${insertedIdeaIds.length} drafts saved.`;

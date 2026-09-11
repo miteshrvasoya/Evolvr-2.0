@@ -62,24 +62,30 @@ const captionSchema = z.object({
   caption: z.string(),
   hashtags: z.array(z.string()).max(10),
   altText: z.string().optional(),
+  imagePrompt: z.string().describe('Highly detailed image generation prompt for the cover image or static post.').optional(),
+  videoScript: z.string().describe('Detailed shot-by-shot script if format is reel or story.').optional(),
 });
 
 export type CaptionGenerationOutput = z.infer<typeof captionSchema>;
 
 export function generateCaptionPrompt(ctx: CaptionGenerationContext): StructuredLLMRequest<CaptionGenerationOutput> {
   return {
-    systemPrompt: `You are a professional social media copywriter. Write a caption for the following concept.
+    systemPrompt: `You are a professional social media copywriter and creative director. Write a caption and provide creative direction for the media.
 
 Brand Voice: ${ctx.brandVoice}
 Format: ${ctx.format}
 Banned Topics: ${ctx.bannedTopics.join(', ')}
 
-Rules:
+Rules for Caption:
 - The exact provided Hook MUST be the very first line of the caption.
 - Use one of the preferred CTA patterns.
 - Do not make factual claims without evidence.
 - Keep the caption engaging, readable (use line breaks), and authentic.
-- Provide appropriate hashtags.`,
+- Provide appropriate hashtags.
+
+Rules for Media Direction:
+- If format is static_post or carousel, provide a highly detailed 'imagePrompt' describing the exact visual composition, lighting, style, and subject.
+- If format is reel or story, provide a detailed 'videoScript' with a shot-by-shot breakdown (timecodes, visuals, audio/text overlays), AND provide an 'imagePrompt' for a high-quality cover image.`,
 
     userPrompt: `Concept: ${ctx.concept}
 Required Hook: ${ctx.hook}

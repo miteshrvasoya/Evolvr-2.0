@@ -37,9 +37,9 @@ export default async function analyticsRoutes(app: FastifyInstance) {
       // 2. Insert into account_metrics
       const result = await sql`
         INSERT INTO account_metrics (
-          social_account_id, followers, reach, impressions, profile_visits, raw_metrics
+          social_account_id, followers, following, reach, impressions, profile_visits, raw_metrics
         ) VALUES (
-          ${accountId}, ${profile.followers}, ${insights.reach}, ${insights.impressions}, ${insights.profile_views}, ${insights}
+          ${accountId}, ${profile.followers}, ${profile.following}, ${insights.reach}, ${insights.impressions}, ${insights.profile_views}, ${insights}
         ) RETURNING *
       `;
 

@@ -94,6 +94,8 @@ export class InstagramAdapter {
       displayName: data.name,
       profileImageUrl: data.profile_picture_url,
       followers: data.followers_count,
+      following: data.follows_count,
+      mediaCount: data.media_count,
     };
   }
 
@@ -150,12 +152,13 @@ export class InstagramAdapter {
   }
 
   async getAccountInsights(accessToken: string, platformAccountId: string) {
-    const url = `${this.baseGraphUrl}/${platformAccountId}/insights?metric=impressions,reach,profile_views&period=day&access_token=${accessToken}`;
+    // The Instagram Graph API uses 'views' instead of 'impressions' for basic display API and some creator accounts
+    const url = `${this.baseGraphUrl}/${platformAccountId}/insights?metric=views,reach,profile_views&period=day&access_token=${accessToken}`;
     const { response, data } = await this.fetchWithLog(url);
     if (!response.ok) {
       LoggerService.logError({
         errorMessage: data?.error?.message || 'Failed to fetch account insights',
-        context: { platformAccountId }
+        context: { platformAccountId, errorData: data }
       });
       return { impressions: 0, reach: 0, profile_views: 0 };
     }
@@ -166,7 +169,7 @@ export class InstagramAdapter {
     }
 
     return {
-      impressions: metrics.impressions || 0,
+      impressions: metrics.views || metrics.impressions || 0,
       reach: metrics.reach || 0,
       profile_views: metrics.profile_views || 0,
     };
