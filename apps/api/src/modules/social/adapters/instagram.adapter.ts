@@ -2,14 +2,15 @@ import { env } from '../../../config/env.js';
 import { LoggerService } from '../../common/logger.service.js';
 
 export class InstagramAdapter {
-  private readonly baseUrl = `https://graph.instagram.com/${env.INSTAGRAM_API_VERSION}`;
+  private readonly baseGraphUrl = `https://graph.instagram.com`;
+  private readonly baseApiUrl = `${this.baseGraphUrl}/${env.INSTAGRAM_API_VERSION}`;
 
   private async fetchWithLog(url: string, options: RequestInit = {}) {
     const start = Date.now();
     try {
       const response = await fetch(url, options);
       const data = await response.json().catch(() => ({}));
-      
+
       LoggerService.logApiCall({
         direction: 'outward',
         method: options.method || 'GET',
@@ -84,7 +85,7 @@ export class InstagramAdapter {
   }
 
   async getAccountProfile(accessToken: string, platformAccountId: string) {
-    const url = `${this.baseUrl}/me?fields=username,name,profile_picture_url,followers_count&access_token=${accessToken}`;
+    const url = `${this.baseApiUrl}/me?fields=username,name,profile_picture_url,followers_count,follows_count,media_count,account_type&access_token=${accessToken}`;
     const { response, data } = await this.fetchWithLog(url);
     if (!response.ok) throw new Error(data.error?.message || 'Failed to fetch profile');
 
@@ -149,7 +150,7 @@ export class InstagramAdapter {
   }
 
   async getAccountInsights(accessToken: string, platformAccountId: string) {
-    const url = `${this.baseUrl}/${platformAccountId}/insights?metric=impressions,reach,profile_views&period=day&access_token=${accessToken}`;
+    const url = `${this.baseGraphUrl}/${platformAccountId}/insights?metric=impressions,reach,profile_views&period=day&access_token=${accessToken}`;
     const { response, data } = await this.fetchWithLog(url);
     if (!response.ok) {
       LoggerService.logError({

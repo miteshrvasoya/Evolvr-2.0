@@ -1,5 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { sql } from '../../db/client.js';
+import { getInstagramAdapter } from '../social/adapters/index.js';
+import { decryptToken } from '../common/encryption.js';
 
 export default async function dashboardRoutes(app: FastifyInstance) {
   app.addHook('onRequest', app.authenticate);
@@ -27,8 +29,33 @@ export default async function dashboardRoutes(app: FastifyInstance) {
     }
 
     // Fetch latest metrics
-    const metrics = await sql`SELECT followers, reach, impressions, profile_visits FROM account_metrics WHERE social_account_id = ${accountId} ORDER BY captured_at DESC LIMIT 1`;
-    const accountMetrics = metrics[0] || { followers: 0, reach: 0, profileVisits: 0, impressions: 0 };
+    const metrics = await sql`SELECT * FROM account_metrics WHERE social_account_id = ${accountId} ORDER BY captured_at DESC LIMIT 1`;
+    let accountMetrics = metrics[0] || { followers: 0, reach: 0, profile_visits: 0, impressions: 0 };
+    
+    // Auto-sync if no metrics or older than 1 hour
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    if (!metrics[0] || new Date(metrics[0].captured_at) < oneHourAgo) {
+      try {
+        const accounts = await sql`SELECT platform_account_id, access_token_encrypted FROM social_accounts WHERE id = ${accountId}`;
+        if (accounts.length > 0 && accounts[0].accessTokenEncrypted) {
+          const accessToken = decryptToken(accounts[0].accessTokenEncrypted);
+          const igAdapter = getInstagramAdapter();
+          const insights = await igAdapter.getAccountInsights(accessToken, accounts[0].platformAccountId);
+          const profile = await igAdapter.getAccountProfile(accessToken, accounts[0].platformAccountId);
+          
+          const result = await sql`
+            INSERT INTO account_metrics (
+              social_account_id, followers, reach, impressions, profile_visits, raw_metrics
+            ) VALUES (
+              ${accountId}, ${profile.followers}, ${insights.reach}, ${insights.impressions}, ${insights.profile_views}, ${insights}
+            ) RETURNING *
+          `;
+          accountMetrics = result[0];
+        }
+      } catch (err) {
+        app.log.error(err, 'Failed to auto-sync account metrics on dashboard load');
+      }
+    }
 
     // Fetch active goal
     const goals = await sql`SELECT * FROM admin_goals WHERE social_account_id = ${accountId} AND is_active = true LIMIT 1`;
