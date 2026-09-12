@@ -28,8 +28,21 @@ export const createOrchestratorWorker = () => {
       // We use simple heuristic rules for this scaffold.
 
       // Phase 1: Publish
-      // (Skipping actual scheduling logic for brevity, assuming PublishingWorker is manually triggered via dashboard for now)
-
+      // Are there any posts scheduled to be published right now?
+      const postsToPublish = await sql`
+        SELECT id FROM posts 
+        WHERE social_account_id = ${socialAccountId} 
+        AND status = 'scheduled' 
+        AND scheduled_at <= NOW()
+        ORDER BY scheduled_at ASC
+        LIMIT 1
+      `;
+      if (postsToPublish.length > 0 && postsToPublish[0]) {
+        await tracker.addLog(`Found scheduled post due for publishing. Enqueuing Publishing.`);
+        await queues.publishing.add('publish-post', { socialAccountId, agentRunId, goalId, postId: postsToPublish[0].id, attemptNumber: 1 });
+        await tracker.completeStep(stepId, { action: 'queued_publishing' });
+        return { action: 'queued_publishing' };
+      }
       // Phase 2: Measure (Analytics)
       // Are there posts published > 24 hours ago that lack metrics in the last 24 hours?
       const postsNeedingMetrics = await sql`
