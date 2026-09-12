@@ -37,20 +37,21 @@ export default async function dashboardRoutes(app: FastifyInstance) {
     if (!metrics[0] || new Date(metrics[0].captured_at) < oneHourAgo) {
       try {
         const accounts = await sql`SELECT platform_account_id, access_token_encrypted FROM social_accounts WHERE id = ${accountId}`;
-        if (accounts.length > 0 && accounts[0].accessTokenEncrypted) {
-          const accessToken = decryptToken(accounts[0].accessTokenEncrypted);
+        if (accounts.length > 0 && accounts[0] && accounts[0].accessTokenEncrypted) {
+          const acc = accounts[0];
+          const accessToken = decryptToken(acc.accessTokenEncrypted);
           const igAdapter = getInstagramAdapter();
-          const insights = await igAdapter.getAccountInsights(accessToken, accounts[0].platformAccountId);
-          const profile = await igAdapter.getAccountProfile(accessToken, accounts[0].platformAccountId);
+          const insights = await igAdapter.getAccountInsights(accessToken, acc.platformAccountId);
+          const profile = await igAdapter.getAccountProfile(accessToken, acc.platformAccountId);
           
           const result = await sql`
             INSERT INTO account_metrics (
               social_account_id, followers, following, reach, impressions, profile_visits, raw_metrics
             ) VALUES (
-              ${accountId}, ${profile.followers}, ${profile.following}, ${insights.reach}, ${insights.impressions}, ${insights.profile_views}, ${insights}
+              ${accountId}, ${profile.followers || 0}, ${profile.following || 0}, ${insights.reach || 0}, ${insights.impressions || 0}, ${insights.profile_views || 0}, ${sql.json(insights)}
             ) RETURNING *
           `;
-          accountMetrics = result[0];
+          accountMetrics = result[0] || accountMetrics;
         }
       } catch (err) {
         app.log.error(err, 'Failed to auto-sync account metrics on dashboard load');
@@ -84,31 +85,106 @@ export default async function dashboardRoutes(app: FastifyInstance) {
     const accountId = await getPrimaryAccount(userId);
 
     if (!accountId) {
-      return { success: true, data: { state: 'idle', recentDecisions: [] } };
+      return { success: true, data: { state: 'IDLE', recentDecisions: [], scheduledJobs: [], recentErrors: [], recentApiLogs: [], currentStep: null, nextAction: null, upcomingActions: [] } };
     }
 
-    const runs = await sql`SELECT run_type, status, started_at, progress FROM agent_runs WHERE social_account_id = ${accountId} ORDER BY started_at DESC LIMIT 1`;
+    // Get most recent run (not just last 1 — also check currently running)
+    const runs = await sql`
+      SELECT id, run_type, status, current_step, started_at, completed_at,
+             last_activity_at, last_heartbeat_at, error_code, error_message, retry_count
+      FROM agent_runs
+      WHERE social_account_id = ${accountId}
+      ORDER BY started_at DESC LIMIT 1
+    `;
     const r = runs[0];
-    
-    let parsedProgress = [];
-    if (r?.progress) {
-      try {
-        parsedProgress = typeof r.progress === 'string' ? JSON.parse(r.progress) : r.progress;
-      } catch (e) {
-        // ignore
+
+    let activeRun = null;
+    let currentStep: any = null;
+
+    if (r) {
+      const stepsRaw = await sql`
+        SELECT id, step_type, status, attempt_number, max_attempts,
+               started_at, completed_at, error_message, retryable, next_retry_at
+        FROM agent_steps
+        WHERE agent_run_id = ${r.id}
+        ORDER BY created_at ASC
+      `;
+
+      const events = await sql`
+        SELECT id, agent_step_id, event_type, level, message, metadata, created_at
+        FROM agent_events
+        WHERE agent_run_id = ${r.id}
+        ORDER BY created_at ASC
+      `;
+
+      const steps = stepsRaw.map((step: any) => ({
+        id: step.id,
+        step: step.stepType,
+        status: step.status,
+        attemptNumber: step.attemptNumber,
+        maxAttempts: step.maxAttempts,
+        timestamp: step.startedAt,
+        completedAt: step.completedAt,
+        error: step.errorMessage,
+        retryable: step.retryable,
+        nextRetryAt: step.nextRetryAt,
+        logs: events.filter((e: any) => e.agentStepId === step.id).map((e: any) => e.message),
+      }));
+
+      // Derive the current active step
+      const running = stepsRaw.find((s: any) => s.status === 'running');
+      const retrying = stepsRaw.find((s: any) => s.status === 'retrying');
+      const activeStep = running ?? retrying ?? stepsRaw[stepsRaw.length - 1] ?? null;
+
+      if (activeStep) {
+        const elapsedMs = activeStep.startedAt
+          ? Date.now() - new Date(activeStep.startedAt).getTime()
+          : 0;
+        currentStep = {
+          stepType: activeStep.stepType,
+          status: activeStep.status,
+          attemptNumber: activeStep.attemptNumber,
+          maxAttempts: activeStep.maxAttempts,
+          startedAt: activeStep.startedAt,
+          errorMessage: activeStep.errorMessage,
+          retryable: activeStep.retryable,
+          nextRetryAt: activeStep.nextRetryAt,
+          elapsedSeconds: Math.floor(elapsedMs / 1000),
+        };
       }
+
+      activeRun = {
+        id: r.id,
+        runType: r.runType,
+        status: r.status,
+        currentStep: r.currentStep,
+        startedAt: r.startedAt,
+        completedAt: r.completedAt,
+        lastActivityAt: r.lastActivityAt,
+        lastHeartbeatAt: r.lastHeartbeatAt,
+        errorMessage: r.errorMessage,
+        retryCount: r.retryCount,
+        progress: steps,
+      };
     }
 
-    // NOTE: postgres.camel transform is enabled!
-    // The db driver automatically converts snake_case to camelCase.
-    // e.g. run_type -> r.runType, started_at -> r.startedAt
-    const activeRun = r?.status === 'running' || r?.status === 'failed' ? {
-      runType: r.runType,
-      status: r.status,
-      startedAt: r.startedAt,
-      progress: parsedProgress
-    } : null;
-    const state = r?.status === 'running' ? 'running' : 'idle';
+    // Derive semantic state from run status
+    const runStatus = r?.status ?? 'IDLE';
+    const state: string = (() => {
+      if (!r) return 'IDLE';
+      switch (runStatus) {
+        case 'running':    return 'RUNNING';
+        case 'waiting':    return 'WAITING';
+        case 'paused':     return 'PAUSED';
+        case 'retrying':   return 'RETRYING';
+        case 'blocked':    return 'BLOCKED';
+        case 'failed':     return 'FAILED';
+        case 'completed':  return 'COMPLETED';
+        case 'cancelled':  return 'CANCELLED';
+        case 'queued':     return 'QUEUED';
+        default:           return 'IDLE';
+      }
+    })();
 
     const recentDecisions = await sql`
       SELECT ad.*, ar.started_at, ar.run_type
@@ -119,36 +195,44 @@ export default async function dashboardRoutes(app: FastifyInstance) {
       LIMIT 10
     `;
 
-    // Fetch scheduled jobs
-    const scheduledJobs = await sql`SELECT id, job_type, status, scheduled_for FROM scheduled_jobs ORDER BY scheduled_for ASC LIMIT 5`;
+    // Scheduled jobs — use for upcoming + next action
+    const upcomingJobsRaw = await sql`
+      SELECT id, job_type, status, scheduled_for
+      FROM scheduled_jobs
+      WHERE status IN ('pending', 'running')
+      ORDER BY scheduled_for ASC
+      LIMIT 6
+    `;
 
-    // Fetch recent errors from agent_runs
+    const nextAction = upcomingJobsRaw[0]
+      ? { jobType: upcomingJobsRaw[0].jobType, scheduledFor: upcomingJobsRaw[0].scheduledFor, status: upcomingJobsRaw[0].status }
+      : null;
+    const upcomingActions = upcomingJobsRaw.slice(0, 5).map((j: any) => ({
+      id: j.id, jobType: j.jobType, scheduledFor: j.scheduledFor, status: j.status,
+    }));
+
+    // Legacy scheduledJobs (same data, kept for backward compat)
+    const scheduledJobs = upcomingJobsRaw;
+
+    // Recent errors
     const recentErrorsRaw = await sql`
-      SELECT error, started_at as timestamp 
-      FROM agent_runs 
-      WHERE social_account_id = ${accountId} AND error IS NOT NULL 
-      ORDER BY started_at DESC 
+      SELECT error_message, started_at as timestamp
+      FROM agent_runs
+      WHERE social_account_id = ${accountId} AND error_message IS NOT NULL
+      ORDER BY started_at DESC
       LIMIT 5
     `;
-    const recentErrors = recentErrorsRaw.map(e => {
+    const recentErrors = recentErrorsRaw.map((e: any) => {
       let msg = 'Unknown error';
-      if (typeof e.error === 'string') {
-        try {
-          const parsed = JSON.parse(e.error);
-          msg = parsed.message || e.error;
-        } catch {
-          msg = e.error;
-        }
-      } else if (e.error && typeof e.error === 'object') {
-        msg = e.error.message || JSON.stringify(e.error);
+      if (typeof e.errorMessage === 'string') {
+        try { msg = JSON.parse(e.errorMessage)?.message ?? e.errorMessage; } catch { msg = e.errorMessage; }
+      } else if (e.errorMessage && typeof e.errorMessage === 'object') {
+        msg = (e.errorMessage as any).message ?? JSON.stringify(e.errorMessage);
       }
-      return {
-        message: msg,
-        timestamp: e.timestamp
-      };
+      return { message: msg, timestamp: e.timestamp };
     });
 
-    // Fetch recent Outward API logs
+    // Recent outward API logs
     const recentApiLogs = await sql`
       SELECT method, url, status_code, latency_ms, created_at
       FROM api_logs
@@ -162,11 +246,15 @@ export default async function dashboardRoutes(app: FastifyInstance) {
       data: {
         state,
         currentRun: activeRun,
+        currentStep,
+        nextAction,
+        upcomingActions,
         recentDecisions,
         scheduledJobs,
         recentErrors,
-        recentApiLogs
-      }
+        recentApiLogs,
+        lastUpdated: new Date().toISOString(),
+      },
     };
   });
 
@@ -209,7 +297,7 @@ export default async function dashboardRoutes(app: FastifyInstance) {
         evidenceIds: parseJson(s.evidenceIds)
       };
     });
-    const active = history.find(s => s.status === 'active') || history[0] || null;
+    const active = history.find((s: any) => s.status === 'active') || history[0] || null;
 
     const insights = await sql`SELECT * FROM strategic_insights WHERE social_account_id = ${accountId} ORDER BY created_at DESC LIMIT 10`;
 

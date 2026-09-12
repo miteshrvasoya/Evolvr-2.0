@@ -137,7 +137,7 @@ export class OpenRouterAdapter implements LLMProvider {
         // Strip markdown blocks if present
         let cleanContent = content;
         const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
-        if (jsonMatch) {
+        if (jsonMatch && jsonMatch[1]) {
           cleanContent = jsonMatch[1].trim();
         } else {
           // If no markdown, strip text before first { or [ and after last } or ]

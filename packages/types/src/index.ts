@@ -487,28 +487,57 @@ export type AgentRunType =
   | 'engagement'
   | 'publish';
 
-export type AgentRunStatus = 'running' | 'completed' | 'failed' | 'blocked' | 'waiting_approval';
+export type AgentRunStatus = 'created' | 'queued' | 'running' | 'waiting' | 'paused' | 'retrying' | 'blocked' | 'completed' | 'failed' | 'cancelled';
 
 export interface AgentStep {
-  step: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
-  error?: string;
-  logs?: string[];
-  timestamp: ISO8601;
+  id: UUID;
+  agentRunId: UUID;
+  stepType: string;
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'blocked' | 'retrying';
+  attemptNumber: number;
+  maxAttempts: number;
+  startedAt: ISO8601 | null;
+  completedAt: ISO8601 | null;
+  inputReference: JsonObject | null;
+  outputReference: JsonObject | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  retryable: boolean;
+  nextRetryAt: ISO8601 | null;
+  createdAt: ISO8601;
+  updatedAt: ISO8601;
+}
+
+export interface AgentEvent {
+  id: UUID;
+  agentRunId: UUID | null;
+  agentStepId: UUID | null;
+  eventType: string;
+  level: 'info' | 'warn' | 'error';
+  message: string;
+  metadata: JsonObject;
+  createdAt: ISO8601;
 }
 
 export interface AgentRun {
   id: UUID;
   runType: AgentRunType;
   socialAccountId: UUID;
+  goalId: UUID | null;
+  currentStep: string | null;
+  retryCount: number;
+  errorCode: string | null;
+  errorMessage: string | null;
+  lastHeartbeatAt: ISO8601 | null;
+  lastActivityAt: ISO8601 | null;
   status: AgentRunStatus;
   startedAt: ISO8601;
   completedAt: ISO8601 | null;
   inputSnapshot: JsonObject;
   output: JsonObject | null;
   error: { message: string; stack?: string } | null;
-  progress?: AgentStep[];
   correlationId: string;
+  updatedAt: ISO8601;
 }
 
 export type DecisionType =

@@ -5,7 +5,7 @@ export class InstagramAdapter {
   private readonly baseGraphUrl = `https://graph.instagram.com`;
   private readonly baseApiUrl = `${this.baseGraphUrl}/${env.INSTAGRAM_API_VERSION}`;
 
-  private async fetchWithLog(url: string, options: RequestInit = {}) {
+  private async fetchWithLog(url: string, options: RequestInit = {}): Promise<{ response: Response, data: any }> {
     const start = Date.now();
     try {
       const response = await fetch(url, options);
@@ -101,7 +101,7 @@ export class InstagramAdapter {
 
   async publishPost(accessToken: string, platformAccountId: string, mediaUrl: string, caption: string) {
     // 1. Create Media Container
-    const createUrl = `${this.baseUrl}/me/media`;
+    const createUrl = `${this.baseApiUrl}/me/media`;
     const createParams = new URLSearchParams({
       image_url: mediaUrl,
       caption: caption,
@@ -117,7 +117,7 @@ export class InstagramAdapter {
     await new Promise(resolve => setTimeout(resolve, 3000));
 
     // 3. Publish
-    const publishUrl = `${this.baseUrl}/me/media_publish`;
+    const publishUrl = `${this.baseApiUrl}/me/media_publish`;
     const publishParams = new URLSearchParams({
       creation_id: creationId,
       access_token: accessToken,
@@ -133,7 +133,7 @@ export class InstagramAdapter {
   }
 
   async getPostInsights(accessToken: string, platformPostId: string) {
-    const url = `${this.baseUrl}/${platformPostId}/insights?metric=impressions,reach,saved,video_views&access_token=${accessToken}`;
+    const url = `${this.baseApiUrl}/${platformPostId}/insights?metric=impressions,reach,saved,video_views&access_token=${accessToken}`;
     const { response, data } = await this.fetchWithLog(url);
     if (!response.ok) return null;
 

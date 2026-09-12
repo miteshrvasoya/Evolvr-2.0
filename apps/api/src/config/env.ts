@@ -23,7 +23,7 @@ const envSchema = z.object({
   OPENROUTER_API_KEY: z.string().default(''),
   OPENROUTER_BASE_URL: z.string().default('https://openrouter.ai/api/v1'),
   OPENROUTER_DEFAULT_MODEL: z.string().default('openai/gpt-4o-mini'),
-  OPENROUTER_STRONG_MODEL: z.string().default('anthropic/claude-3-5-sonnet'),
+  OPENROUTER_STRONG_MODEL: z.string().default('anthropic/claude-3.5-sonnet'),
 
   GEMINI_API_KEY: z.string().default(''),
   GEMINI_DEFAULT_MODEL: z.string().default('gemini-1.5-flash'),
@@ -38,9 +38,9 @@ const envSchema = z.object({
   ANTHROPIC_STRONG_MODEL: z.string().default('claude-3-5-sonnet-20241022'),
 
   // Research Provider
-  RESEARCH_PROVIDER: z.enum(['serper', 'tavily']).default('serper'),
+  RESEARCH_PROVIDER: z.enum(['serper', 'tavily']).default('tavily'),
   SERPER_API_KEY: z.string().default(''),
-  TAVILY_API_KEY: z.string().default(''),
+  TAVILY_API_KEY: z.string().default('tvly-DUMMYKEY'),
 
   // Instagram / Meta
   META_APP_ID: z.string().default(''),

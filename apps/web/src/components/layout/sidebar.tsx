@@ -7,6 +7,7 @@ import {
   Bot,
   Calendar,
   FlaskConical,
+  History,
   LayoutDashboard,
   Search,
   Settings,
@@ -17,6 +18,7 @@ import { cn } from '@/lib/utils';
 const navItems = [
   { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
   { href: '/dashboard/agent', label: 'Agent Status', icon: Bot },
+  { href: '/dashboard/agent/runs', label: 'Run History', icon: History },
   { href: '/dashboard/content', label: 'Content Calendar', icon: Calendar },
   { href: '/dashboard/strategy', label: 'Strategy', icon: Target },
   { href: '/dashboard/analytics', label: 'Analytics', icon: BarChart3 },

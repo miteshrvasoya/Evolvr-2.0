@@ -16,19 +16,13 @@ export class ContentAgent {
   private llm = getLLMProvider();
   private policyEngine = new PolicyEngine();
 
-  async generateContentPlan(socialAccountId: string, strategyVersionId: string) {
-    const runId = randomUUID();
+  async generateContentPlan(socialAccountId: string, strategyVersionId: string, runId: string, attemptNumber: number, maxAttempts: number) {
     const tracker = new AgentRunTracker(runId);
-    
-    // 1. Create run record
-    await sql`
-      INSERT INTO agent_runs (id, run_type, social_account_id, status)
-      VALUES (${runId}, 'CONTENT_GENERATION', ${socialAccountId}, 'running')
-    `;
+    const stepId = await tracker.startStep('content_generation', attemptNumber, maxAttempts);
 
     try {
       console.log(`[ContentAgent] Starting Content Generation Plan for account ${socialAccountId}...`);
-      await tracker.trackStep('Fetching Context', 'running');
+      
       // 2. Fetch Context
       const profiles = await sql`SELECT * FROM account_profiles WHERE social_account_id = ${socialAccountId}`;
       const profile = profiles[0] || {};
@@ -53,38 +47,33 @@ export class ContentAgent {
         bannedTopics: profile.bannedTopics || [],
       };
 
-      const msg1 = `[ContentAgent] Context fetched. Found ${activePillars.length} active content pillars.`;
-      console.log(msg1);
-      await tracker.addLog(msg1);
-      
-      await tracker.trackStep('Fetching Context', 'completed');
-      await tracker.trackStep('Generating Ideas', 'running');
+      await tracker.logEvent(stepId, 'CONTEXT_FETCHED', 'info', `Context fetched. Found ${activePillars.length} active content pillars.`);
 
       // 3. Generate Ideas
-      const msg2 = `[ContentAgent] Asking LLM to brainstorm new content ideas...`;
-      console.log(msg2);
-      await tracker.addLog(msg2);
+      await tracker.logEvent(stepId, 'LLM_IDEATION_STARTED', 'info', `Asking LLM to brainstorm new content ideas...`);
       
       const ideaPrompt = generateContentIdeasPrompt(ideaContext);
       const ideaResponse = await this.llm.generateStructured(ideaPrompt);
       
+      await tracker.logLlmCall(
+        stepId, 
+        'Brainstorming complete! Generated new content ideas.', 
+        'content_ideation', 
+        ideaResponse.model, 
+        ideaResponse.latencyMs, 
+        ideaResponse.inputTokens, 
+        ideaResponse.outputTokens
+      );
+
       if (!ideaResponse.structured) throw new Error('Failed to generate ideas');
       
       const ideas = ideaResponse.structured.ideas;
-      const msg3 = `[ContentAgent] Brainstorming complete! Generated ${ideas.length} new content ideas.`;
-      console.log(msg3);
-      await tracker.addLog(msg3);
-      
-      await tracker.trackStep('Generating Ideas', 'completed');
-      await tracker.trackStep('Drafting Captions', 'running');
       
       const insertedIdeaIds: string[] = [];
 
       // 4. Generate Captions & Run Policy Checks for each idea
       for (const idea of ideas) {
-        const msg4 = `[ContentAgent] Drafting caption for idea: "${idea.concept}"...`;
-        console.log(msg4);
-        await tracker.addLog(msg4);
+        await tracker.logEvent(stepId, 'DRAFTING_CAPTION', 'info', `Drafting caption for idea: "${idea.concept}"...`);
         
         // Generate Caption
         const captionContext: CaptionGenerationContext = {
@@ -100,9 +89,17 @@ export class ContentAgent {
         const capResponse = await this.llm.generateStructured(capPrompt);
         const captionData = capResponse.structured;
 
-        const msg5 = `[ContentAgent] Running policy check for drafted caption...`;
-        console.log(msg5);
-        await tracker.addLog(msg5);
+        await tracker.logLlmCall(
+          stepId, 
+          `Generated caption for idea: "${idea.concept}"`, 
+          'caption_generation', 
+          capResponse.model, 
+          capResponse.latencyMs, 
+          capResponse.inputTokens, 
+          capResponse.outputTokens
+        );
+
+        await tracker.logEvent(stepId, 'POLICY_CHECK_STARTED', 'info', `Running policy check for drafted caption...`);
         
         // Policy Check
         const policyDecision = await this.policyEngine.evaluate({
@@ -112,9 +109,7 @@ export class ContentAgent {
           autonomyLevel,
         });
         
-        const msg6 = `[ContentAgent] Policy Check result: ${policyDecision.decision}`;
-        console.log(msg6);
-        await tracker.addLog(msg6);
+        await tracker.logEvent(stepId, 'POLICY_CHECK_COMPLETED', 'info', `Policy Check result: ${policyDecision.decision}`);
 
         const ideaId = randomUUID();
         insertedIdeaIds.push(ideaId);
@@ -122,12 +117,9 @@ export class ContentAgent {
         let initialStatus = 'draft';
         if (policyDecision.decision === 'BLOCK') initialStatus = 'blocked';
         if (policyDecision.decision === 'REVIEW') initialStatus = 'waiting_approval';
-        // In full implementation, if ALLOW, it gets scheduled
 
         // Insert Idea
-        const msg7 = `[ContentAgent] Saving draft ${ideaId} to database...`;
-        console.log(msg7);
-        await tracker.addLog(msg7);
+        await tracker.logEvent(stepId, 'SAVING_DRAFT', 'info', `Saving draft ${ideaId} to database...`);
         
         await sql`
           INSERT INTO content_ideas (
@@ -141,9 +133,7 @@ export class ContentAgent {
         `;
 
         if (initialStatus !== 'blocked') {
-          const msgMedia = `[ContentAgent] Generating media asset for idea ${ideaId}...`;
-          console.log(msgMedia);
-          await tracker.addLog(msgMedia);
+          await tracker.logEvent(stepId, 'GENERATING_MEDIA', 'info', `Generating media asset for idea ${ideaId}...`);
           
           try {
             const mediaProvider = getMediaProvider();
@@ -177,39 +167,22 @@ export class ContentAgent {
                 ${ideaId}, ${assetType}, ${storageUrl}, ${mediaResult.mimeType}, ${captionData?.imagePrompt || null}, ${JSON.stringify(mediaMetadata)}
               )
             `;
-            const msgMediaComplete = `[ContentAgent] Media asset generated and saved to ${storageUrl}.`;
-            console.log(msgMediaComplete);
-            await tracker.addLog(msgMediaComplete);
+            await tracker.logEvent(stepId, 'MEDIA_GENERATED', 'info', `Media asset generated and saved to ${storageUrl}.`);
           } catch (mediaError: any) {
-            const msgMediaFail = `[ContentAgent] Warning: Failed to generate media asset: ${mediaError.message}`;
-            console.error(msgMediaFail);
-            await tracker.addLog(msgMediaFail);
+            await tracker.logEvent(stepId, 'MEDIA_FAILED', 'warn', `Warning: Failed to generate media asset: ${mediaError.message}`);
           }
         }
       }
       
-      const msg8 = `[ContentAgent] Content generation cycle complete. ${insertedIdeaIds.length} drafts saved.`;
-      console.log(msg8);
-      await tracker.addLog(msg8);
-
-      await tracker.trackStep('Drafting Captions', 'completed');
+      await tracker.logEvent(stepId, 'CYCLE_COMPLETE', 'info', `Content generation cycle complete. ${insertedIdeaIds.length} drafts saved.`);
 
       // 5. Complete run
-      await sql`
-        UPDATE agent_runs 
-        SET status = 'completed', completed_at = NOW(), output = ${JSON.stringify({ generatedIdeas: insertedIdeaIds })}
-        WHERE id = ${runId}
-      `;
+      await tracker.completeStep(stepId, { generatedIdeas: insertedIdeaIds });
 
       return { success: true, generatedIdeas: insertedIdeaIds };
 
     } catch (error: any) {
-      await sql`
-        UPDATE agent_runs 
-        SET status = 'failed', completed_at = NOW(), error = ${JSON.stringify({ message: error.message })}
-        WHERE id = ${runId}
-      `;
-      throw error;
+      throw { error, stepId };
     }
   }
 }

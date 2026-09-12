@@ -39,7 +39,7 @@ export default async function analyticsRoutes(app: FastifyInstance) {
         INSERT INTO account_metrics (
           social_account_id, followers, following, reach, impressions, profile_visits, raw_metrics
         ) VALUES (
-          ${accountId}, ${profile.followers}, ${profile.following}, ${insights.reach}, ${insights.impressions}, ${insights.profile_views}, ${insights}
+          ${accountId}, ${profile.followers || 0}, ${profile.following || 0}, ${insights.reach || 0}, ${insights.impressions || 0}, ${insights.profile_views || 0}, ${sql.json(insights)}
         ) RETURNING *
       `;
 
@@ -70,7 +70,7 @@ export default async function analyticsRoutes(app: FastifyInstance) {
         }
       };
     }
-    const accountId = accounts[0].id;
+    const accountId = accounts[0]?.id;
     
     // Determine date limit
     let days = 30;

@@ -1,13 +1,14 @@
 import { Queue } from 'bullmq';
 import { env } from '../config/env.js';
-import IORedis from 'ioredis';
+import { Redis } from 'ioredis';
 
 // Create a reused Redis connection for BullMQ
-export const redisConnection = new IORedis(env.REDIS_URL, {
+export const redisConnection = new Redis(env.REDIS_URL, {
   maxRetriesPerRequest: null,
 });
 
 export const queues = {
+  orchestrator: new Queue('orchestrator', { connection: redisConnection }),
   research: new Queue('research', { connection: redisConnection }),
   strategy: new Queue('strategy', { connection: redisConnection }),
   contentGeneration: new Queue('content-generation', { connection: redisConnection }),

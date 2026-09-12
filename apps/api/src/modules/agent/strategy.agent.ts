@@ -7,31 +7,21 @@ import { AgentRunTracker } from './agent-tracker.js';
 export class StrategyAgent {
   private llm = getLLMProvider();
 
-  async runStrategyRevision(socialAccountId: string, goalId: string) {
-    const runId = randomUUID();
-    
-    // 1. Create agent run record
-    await sql`
-      INSERT INTO agent_runs (id, run_type, social_account_id, status)
-      VALUES (${runId}, 'STRATEGY_REVISION', ${socialAccountId}, 'running')
-    `;
-
+  async runStrategyRevision(socialAccountId: string, goalId: string, runId: string, attemptNumber: number, maxAttempts: number) {
     const tracker = new AgentRunTracker(runId);
+    const stepId = await tracker.startStep('strategy_revision', attemptNumber, maxAttempts);
 
     try {
       console.log(`[StrategyAgent] Starting Strategy Revision for account ${socialAccountId}...`);
-      await tracker.trackStep('Fetching Context', 'running');
+      
       // 2. Fetch Context
-      // Fetch Account Profile
       const profiles = await sql`SELECT * FROM account_profiles WHERE social_account_id = ${socialAccountId}`;
       const profile = profiles[0] || {};
       
-      // Fetch Goal
       const goals = await sql`SELECT * FROM admin_goals WHERE id = ${goalId}`;
       const goal = goals[0];
       if (!goal) throw new Error('Goal not found');
 
-      // (Skipping full analytics/insights fetches for brevity in the scaffold)
       const context: BuildStrategyContext = {
         niche: profile.niche || 'General',
         valueProposition: profile.valueProposition || '',
@@ -42,23 +32,16 @@ export class StrategyAgent {
         primaryMetric: goal.primaryMetric,
         target: String(goal.target),
         deadline: String(goal.deadline),
-        accountMetrics: '[]', // Mock
-        strategicInsights: '[]', // Mock
-        researchFindings: '[]', // Mock
-        experimentResults: '[]', // Mock
+        accountMetrics: '[]',
+        strategicInsights: '[]',
+        researchFindings: '[]',
+        experimentResults: '[]',
       };
 
-      const msg1 = `[StrategyAgent] Context fetched successfully. Goal: ${goal.goalType}`;
-      console.log(msg1);
-      await tracker.addLog(msg1);
-      
-      await tracker.trackStep('Fetching Context', 'completed');
-      await tracker.trackStep('Generating Strategy', 'running');
+      await tracker.logEvent(stepId, 'CONTEXT_FETCHED', 'info', `Context fetched successfully. Goal: ${goal.goalType}`);
       
       // 3. Generate Prompt & Call LLM
-      const msg2 = `[StrategyAgent] Asking LLM to generate new strategy... (This may take a minute)`;
-      console.log(msg2);
-      await tracker.addLog(msg2);
+      await tracker.logEvent(stepId, 'LLM_GENERATION_STARTED', 'info', `Asking LLM to generate new strategy...`);
       
       const prompt = buildStrategyPrompt(context);
       const llmResponse = await this.llm.generateStructured(prompt);
@@ -68,17 +51,18 @@ export class StrategyAgent {
       }
 
       const strategyData = llmResponse.structured;
-      const msg3 = `[StrategyAgent] LLM generated strategy successfully. Confidence: ${strategyData.confidence}`;
-      console.log(msg3);
-      await tracker.addLog(msg3);
+      await tracker.logLlmCall(
+        stepId, 
+        `LLM generated strategy successfully. Confidence: ${strategyData.confidence}`, 
+        'strategy_generation', 
+        llmResponse.model, 
+        llmResponse.latencyMs, 
+        llmResponse.inputTokens, 
+        llmResponse.outputTokens
+      );
 
-      await tracker.trackStep('Generating Strategy', 'completed');
-      await tracker.trackStep('Saving Strategy', 'running');
-      
       // 4. Save Strategy Version
-      const msg4 = `[StrategyAgent] Saving new strategy version to database...`;
-      console.log(msg4);
-      await tracker.addLog(msg4);
+      await tracker.logEvent(stepId, 'SAVING_STRATEGY', 'info', `Saving new strategy version to database...`);
       
       const existingVersions = await sql`SELECT COUNT(*) as count FROM strategy_versions WHERE social_account_id = ${socialAccountId}`;
       const nextVersion = Number(existingVersions[0].count) + 1;
@@ -97,7 +81,7 @@ export class StrategyAgent {
         ) RETURNING id
       `;
 
-      const strategyId = insertedStrategy[0].id;
+      const strategyId = insertedStrategy[0]?.id;
 
       // 5. Record Decision
       await sql`
@@ -109,31 +93,15 @@ export class StrategyAgent {
         )
       `;
 
-      await tracker.trackStep('Saving Strategy', 'completed');
-
       // 6. Complete Run
-      await sql`
-        UPDATE agent_runs 
-        SET status = 'completed', completed_at = NOW(), output = ${JSON.stringify({ strategyId: insertedStrategy[0].id })}
-        WHERE id = ${runId}
-      `;
+      await tracker.completeStep(stepId, { strategyId });
 
       console.log(`[StrategyAgent] Strategy Revision Complete! New Strategy ID: ${strategyId}`);
-      return { success: true, strategyId: insertedStrategy[0].id };
+      return { success: true, strategyId };
 
     } catch (error: any) {
-      await tracker.completeCurrentStep(); // Will leave it running but actually we want to fail it
-      const currentStep = (await sql`SELECT progress FROM agent_runs WHERE id = ${runId}`)[0]?.progress?.find((s: any) => s.status === 'running')?.step;
-      if (currentStep) {
-        await tracker.trackStep(currentStep, 'failed', error.message);
-      }
-      
-      await sql`
-        UPDATE agent_runs 
-        SET status = 'failed', completed_at = NOW(), error = ${sql.json({ message: error.message })}
-        WHERE id = ${runId}
-      `;
-      throw error;
+      console.error(`[StrategyAgent] CYCLE FAILED for ${socialAccountId}`, error);
+      throw { error, stepId };
     }
   }
 }
