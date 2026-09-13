@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -47,8 +47,9 @@ type GoalFormData = z.infer<typeof goalSchema>;
 
 function GoalTab() {
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<GoalFormData>({
+  const { register, handleSubmit, setValue, watch, reset, formState: { errors } } = useForm<GoalFormData>({
     resolver: zodResolver(goalSchema),
     defaultValues: {
       goalType: 'GROW_ACCOUNT',
@@ -58,6 +59,33 @@ function GoalTab() {
       noControversialContent: true,
     },
   });
+
+  useEffect(() => {
+    async function loadGoal() {
+      try {
+        const g = await apiClient.get<any>('/api/settings/goal');
+        if (g && g.id) {
+          const constraints = g.constraints || {};
+          reset({
+            goalType: g.goalType || g.goal_type || 'GROW_ACCOUNT',
+            primaryMetric: g.primaryMetric || g.primary_metric || 'followers',
+            target: g.target ? Number(g.target) : 1,
+            deadline: g.deadline ? new Date(g.deadline).toISOString().split('T')[0] : '',
+            audience: g.audience || '',
+            businessOutcome: g.businessOutcome || g.business_outcome || '',
+            autonomyLevel: g.autonomyLevel || g.autonomy_level || 'supervised',
+            noPolitics: constraints.noPolitics ?? true,
+            noControversialContent: constraints.noControversialContent ?? true,
+          });
+        }
+      } catch (e) {
+        console.error('Failed to load goal', e);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadGoal();
+  }, [reset]);
 
   async function onSubmit(data: GoalFormData) {
     setSaving(true);
@@ -80,11 +108,17 @@ function GoalTab() {
         <CardDescription>Define what you want the agent to achieve</CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+        {loading ? (
+          <div className="flex items-center space-x-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span>Loading goal...</span>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label>Goal Type</Label>
-              <Select onValueChange={(v) => setValue('goalType', v as GoalType)} defaultValue="GROW_ACCOUNT">
+              <Select onValueChange={(v) => setValue('goalType', v as GoalType)} value={watch('goalType')}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -100,7 +134,7 @@ function GoalTab() {
 
             <div className="space-y-2">
               <Label>Primary Metric</Label>
-              <Select onValueChange={(v) => setValue('primaryMetric', v as PrimaryMetric)} defaultValue="followers">
+              <Select onValueChange={(v) => setValue('primaryMetric', v as PrimaryMetric)} value={watch('primaryMetric')}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -202,11 +236,12 @@ function GoalTab() {
             </div>
           </div>
 
-          <Button type="submit" disabled={saving}>
-            {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-            Save Goal
-          </Button>
-        </form>
+            <Button type="submit" disabled={saving}>
+              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+              Save Goal
+            </Button>
+          </form>
+        )}
       </CardContent>
     </Card>
   );
@@ -509,16 +544,77 @@ function AutonomyTab() {
 
 // ── Account Profile Tab ────────────────────────────────────────────────────────
 
+const profileSchema = z.object({
+  niche: z.string().min(1, 'Niche is required'),
+  valueProposition: z.string().min(1, 'Value proposition is required'),
+  audienceDefinition: z.string(),
+  brandVoice: z.string(),
+  allowedTopics: z.string(),
+  bannedTopics: z.string(),
+});
+type ProfileFormData = z.infer<typeof profileSchema>;
+
 function ProfileTab() {
   const [saving, setSaving] = useState(false);
-  const [niche, setNiche] = useState('');
-  const [valueProposition, setValueProposition] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [accountId, setAccountId] = useState<string | null>(null);
 
-  async function handleSave() {
+  const { register, handleSubmit, reset, formState: { errors } } = useForm<ProfileFormData>({
+    resolver: zodResolver(profileSchema),
+    defaultValues: {
+      niche: '',
+      valueProposition: '',
+      audienceDefinition: '',
+      brandVoice: '',
+      allowedTopics: '',
+      bannedTopics: '',
+    },
+  });
+
+  useEffect(() => {
+    async function loadProfile() {
+      try {
+        const accData = await apiClient.get<{ accounts: any[] }>('/api/accounts');
+        if (accData.accounts && accData.accounts.length > 0) {
+          const accId = accData.accounts[0].id;
+          setAccountId(accId);
+          const profData = await apiClient.get<{ profile: any }>(`/api/accounts/${accId}/profile`);
+          if (profData.profile) {
+            const p = profData.profile;
+            reset({
+              niche: p.niche || '',
+              valueProposition: p.valueProposition || '',
+              audienceDefinition: typeof p.audienceDefinition === 'string' ? p.audienceDefinition : JSON.stringify(p.audienceDefinition || {}),
+              brandVoice: typeof p.brandVoice === 'string' ? p.brandVoice : JSON.stringify(p.brandVoice || {}),
+              allowedTopics: Array.isArray(p.allowedTopics) ? p.allowedTopics.join(', ') : '',
+              bannedTopics: Array.isArray(p.bannedTopics) ? p.bannedTopics.join(', ') : '',
+            });
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load profile', e);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadProfile();
+  }, [reset]);
+
+  async function onSubmit(data: ProfileFormData) {
+    if (!accountId) return;
     setSaving(true);
     try {
-      await apiClient.patch('/api/settings/profile', { niche, valueProposition });
-      toast({ title: 'Profile saved' });
+      const payload = {
+        niche: data.niche,
+        valueProposition: data.valueProposition,
+        audienceDefinition: data.audienceDefinition,
+        brandVoice: data.brandVoice,
+        allowedTopics: data.allowedTopics.split(',').map(s => s.trim()).filter(Boolean),
+        bannedTopics: data.bannedTopics.split(',').map(s => s.trim()).filter(Boolean),
+      };
+      
+      await apiClient.put(`/api/accounts/${accountId}/profile`, payload);
+      toast({ title: 'Profile saved', description: 'Your brand profile has been updated.' });
     } catch {
       toast({ variant: 'destructive', title: 'Error', description: 'Could not save profile.' });
     } finally {
@@ -526,59 +622,94 @@ function ProfileTab() {
     }
   }
 
+  const textareaClass = "flex min-h-[160px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50";
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Account Profile</CardTitle>
-        <CardDescription>Brand memory and voice configuration</CardDescription>
+        <CardTitle>Account Profile (Business Context)</CardTitle>
+        <CardDescription>Configure your brand's core identity so the agent understands what to post</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="space-y-2">
-          <Label htmlFor="niche">Niche</Label>
-          <Input
-            id="niche"
-            placeholder="e.g. B2B SaaS for developers"
-            value={niche}
-            onChange={(e) => setNiche(e.target.value)}
-          />
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="vp">Value Proposition</Label>
-          <Input
-            id="vp"
-            placeholder="e.g. We help developers ship faster with AI-powered code review"
-            value={valueProposition}
-            onChange={(e) => setValueProposition(e.target.value)}
-          />
-        </div>
-
-        <div className="space-y-2">
-          <Label>Brand Voice Tones</Label>
-          <div className="flex flex-wrap gap-2">
-            {['practical', 'credible', 'concise', 'inspiring', 'educational', 'conversational', 'bold'].map((tone) => (
-              <button
-                key={tone}
-                type="button"
-                className="rounded-full border px-3 py-1 text-xs font-medium hover:bg-accent transition-colors"
-              >
-                {tone}
-              </button>
-            ))}
+      <CardContent>
+        {loading ? (
+          <div className="flex items-center space-x-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span>Loading profile...</span>
           </div>
-        </div>
+        ) : !accountId ? (
+           <div className="text-sm text-muted-foreground">Please connect an Instagram account first.</div>
+        ) : (
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
+            <div className="space-y-2">
+              <Label htmlFor="niche">Niche</Label>
+              <textarea
+                id="niche"
+                className="flex min-h-[100px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                placeholder="e.g. B2B SaaS for developers"
+                {...register('niche')}
+              />
+              {errors.niche && <p className="text-xs text-destructive">{errors.niche.message}</p>}
+            </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="maxPosts">Max Posts Per Day</Label>
-            <Input id="maxPosts" type="number" defaultValue={3} min={1} max={10} />
-          </div>
-        </div>
+            <div className="space-y-2">
+              <Label htmlFor="vp">Value Proposition</Label>
+              <textarea
+                id="vp"
+                className="flex min-h-[100px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                placeholder="e.g. We help developers ship faster with AI"
+                {...register('valueProposition')}
+              />
+              {errors.valueProposition && <p className="text-xs text-destructive">{errors.valueProposition.message}</p>}
+            </div>
 
-        <Button onClick={handleSave} disabled={saving}>
-          {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-          Save Profile
-        </Button>
+            <div className="space-y-2">
+              <Label htmlFor="audienceDefinition">Audience Definition</Label>
+              <textarea
+                id="audienceDefinition"
+                className={textareaClass}
+                placeholder="Describe your target audience..."
+                {...register('audienceDefinition')}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="brandVoice">Brand Voice</Label>
+              <textarea
+                id="brandVoice"
+                className={textareaClass}
+                placeholder="e.g. Professional yet conversational, avoids jargon, uses emojis sparingly..."
+                {...register('brandVoice')}
+              />
+            </div>
+
+            <Separator />
+
+            <div className="space-y-2">
+              <Label htmlFor="allowedTopics">Allowed Topics (comma separated)</Label>
+              <textarea
+                id="allowedTopics"
+                className={textareaClass}
+                placeholder="e.g. AI tools, productivity, coding tips..."
+                {...register('allowedTopics')}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="bannedTopics">Banned Topics (comma separated)</Label>
+              <textarea
+                id="bannedTopics"
+                className={textareaClass}
+                placeholder="e.g. Politics, crypto, negative industry gossip..."
+                {...register('bannedTopics')}
+              />
+            </div>
+
+            <Button type="submit" disabled={saving}>
+              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+              Save Profile
+            </Button>
+          </form>
+        )}
       </CardContent>
     </Card>
   );
@@ -587,7 +718,6 @@ function ProfileTab() {
 // ── Main Settings Page ─────────────────────────────────────────────────────────
 
 import { useSearchParams } from 'next/navigation';
-import { useEffect, Suspense } from 'react';
 
 function SettingsContent() {
   const searchParams = useSearchParams();

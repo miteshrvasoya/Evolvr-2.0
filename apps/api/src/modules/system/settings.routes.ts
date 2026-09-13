@@ -25,6 +25,23 @@ export default async function settingsRoutes(app: FastifyInstance) {
     return accounts[0]?.id;
   }
 
+  app.get('/settings/goal', async (request: any, reply) => {
+    const { id: userId } = request.user;
+    const accountId = await getPrimaryAccount(userId);
+
+    if (!accountId) {
+      return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'No primary account found' } });
+    }
+
+    const goals = await sql`
+      SELECT * FROM admin_goals 
+      WHERE social_account_id = ${accountId} AND is_active = true 
+      ORDER BY created_at DESC LIMIT 1
+    `;
+
+    return { success: true, data: goals[0] || null };
+  });
+
   app.post('/settings/goal', async (request: any, reply) => {
     const { id: userId } = request.user;
     const accountId = await getPrimaryAccount(userId);
