@@ -11,6 +11,7 @@ import {
 } from '../../prompts/content.v1.js';
 import { getMediaProvider } from '../media/index.js';
 import { LocalStorageAdapter } from '../storage/local.adapter.js';
+import { env } from '../../config/env.js';
 
 export class ContentAgent {
   private llm = getLLMProvider();
@@ -53,6 +54,7 @@ export class ContentAgent {
       await tracker.logEvent(stepId, 'LLM_IDEATION_STARTED', 'info', `Asking LLM to brainstorm new content ideas...`);
       
       const ideaPrompt = generateContentIdeasPrompt(ideaContext);
+      ideaPrompt.model = env.OPENROUTER_STRONG_MODEL;
       const ideaResponse = await this.llm.generateStructured(ideaPrompt);
       
       await tracker.logLlmCall(
@@ -86,6 +88,7 @@ export class ContentAgent {
         };
 
         const capPrompt = generateCaptionPrompt(captionContext);
+        capPrompt.model = env.OPENROUTER_STRONG_MODEL;
         const capResponse = await this.llm.generateStructured(capPrompt);
         const captionData = capResponse.structured;
 
@@ -149,8 +152,13 @@ export class ContentAgent {
               mediaResult = await mediaProvider.generateImage(captionData?.imagePrompt || idea.concept);
             }
             
+            // Determine extension from mimeType
+            let ext = 'jpg';
+            if (mediaResult.mimeType.includes('gif')) ext = 'gif';
+            else if (mediaResult.mimeType.includes('png')) ext = 'png';
+            
             // Save to local storage
-            const filename = `media_${ideaId}_${Date.now()}.gif`; // Currently GIF from stub
+            const filename = `media_${ideaId}_${Date.now()}.${ext}`;
             const storageUrl = await storageAdapter.saveFile(filename, mediaResult.buffer);
             
             const mediaMetadata = {

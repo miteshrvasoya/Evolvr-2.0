@@ -141,12 +141,13 @@ export default async function agentRoutes(app: FastifyInstance) {
     }
 
     // Set SSE headers
-    reply.raw.writeHead(200, {
-      'Content-Type':  'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection':    'keep-alive',
-      'X-Accel-Buffering': 'no',
-    });
+    reply.header('Content-Type', 'text/event-stream');
+    reply.header('Cache-Control', 'no-cache');
+    reply.header('Connection', 'keep-alive');
+    reply.header('X-Accel-Buffering', 'no');
+    
+    // Use getHeaders() so CORS headers added by @fastify/cors are preserved
+    reply.raw.writeHead(200, reply.getHeaders());
 
     const send = (event: string, data: unknown) => {
       reply.raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);

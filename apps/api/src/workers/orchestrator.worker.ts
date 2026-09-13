@@ -39,7 +39,7 @@ export const createOrchestratorWorker = () => {
       `;
       if (postsToPublish.length > 0 && postsToPublish[0]) {
         await tracker.addLog(`Found scheduled post due for publishing. Enqueuing Publishing.`);
-        await queues.publishing.add('publish-post', { socialAccountId, agentRunId, goalId, postId: postsToPublish[0].id, attemptNumber: 1 });
+        await queues.publishing.add('publish-post', { socialAccountId, agentRunId, goalId, postId: postsToPublish[0].id, attemptNumber: 1 }, { jobId: `${agentRunId}-publish-${postsToPublish[0].id}` });
         await tracker.completeStep(stepId, { action: 'queued_publishing' });
         return { action: 'queued_publishing' };
       }
@@ -57,7 +57,7 @@ export const createOrchestratorWorker = () => {
       `;
       if (postsNeedingMetrics.length > 0) {
         await tracker.addLog('Discovered published posts needing metrics. Enqueuing Analytics.');
-        await queues.analytics.add('fetch-analytics', { socialAccountId, agentRunId, goalId, attemptNumber: 1 });
+        await queues.analytics.add('fetch-analytics', { socialAccountId, agentRunId, goalId, attemptNumber: 1 }, { jobId: `${agentRunId}-analytics` });
         await tracker.completeStep(stepId, { action: 'queued_analytics' });
         return { action: 'queued_analytics' };
       }
@@ -78,7 +78,7 @@ export const createOrchestratorWorker = () => {
       `;
       if (recentInsights.length === 0 && totalMetrics[0] && Number(totalMetrics[0].c) > 5) {
         await tracker.addLog('Sufficient metrics found but no recent insights. Enqueuing Learning Analysis.');
-        await queues.learning.add('run-learning', { socialAccountId, agentRunId, goalId, attemptNumber: 1 });
+        await queues.learning.add('run-learning', { socialAccountId, agentRunId, goalId, attemptNumber: 1 }, { jobId: `${agentRunId}-learning` });
         await tracker.completeStep(stepId, { action: 'queued_learning' });
         return { action: 'queued_learning' };
       }
@@ -89,7 +89,7 @@ export const createOrchestratorWorker = () => {
 
       if (!currentStrategy) {
         await tracker.addLog('No active strategy found. Enqueuing Strategy Revision.');
-        await queues.strategy.add('revise-strategy', { socialAccountId, agentRunId, goalId, attemptNumber: 1 });
+        await queues.strategy.add('revise-strategy', { socialAccountId, agentRunId, goalId, attemptNumber: 1 }, { jobId: `${agentRunId}-strategy` });
         await tracker.completeStep(stepId, { action: 'queued_strategy' });
         return { action: 'queued_strategy' };
       }
@@ -103,21 +103,21 @@ export const createOrchestratorWorker = () => {
       `;
       if (recentResearch.length === 0) {
         await tracker.addLog('Research is outdated (> 7 days). Enqueuing Research phase.');
-        await queues.research.add('run-research', { socialAccountId, agentRunId, goalId, attemptNumber: 1 });
+        await queues.research.add('run-research', { socialAccountId, agentRunId, goalId, attemptNumber: 1 }, { jobId: `${agentRunId}-research` });
         await tracker.completeStep(stepId, { action: 'queued_research' });
         return { action: 'queued_research' };
       }
 
       // Phase 6: Create (Content Generation)
       const draftedCount = await sql`SELECT COUNT(*) as count FROM content_ideas WHERE social_account_id = ${socialAccountId} AND status = 'draft'`;
-      if (draftedCount[0] && Number(draftedCount[0].count) < 5) {
-        await tracker.addLog(`Low content buffer detected (${draftedCount[0].count} < 5). Enqueuing Content generation.`);
+      if (draftedCount[0] && Number(draftedCount[0].count) < 50) {
+        await tracker.addLog(`Content buffer has ${draftedCount[0].count} drafts. Enqueuing Content generation to build up to 50.`);
         await queues.contentGeneration.add('generate-content', {
           socialAccountId,
           agentRunId,
           strategyVersionId: currentStrategy.id,
           attemptNumber: 1
-        });
+        }, { jobId: `${agentRunId}-content` });
         await tracker.completeStep(stepId, { action: 'queued_content' });
         return { action: 'queued_content' };
       }

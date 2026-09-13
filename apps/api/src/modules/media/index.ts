@@ -1,6 +1,7 @@
 import { env } from '../../config/env.js';
 import { MediaProvider } from './media.interface.js';
 import { StubMediaProvider } from './stub.provider.js';
+import { PollinationsMediaProvider } from './pollinations.provider.js';
 
 let providerInstance: MediaProvider | null = null;
 
@@ -10,13 +11,14 @@ export function getMediaProvider(): MediaProvider {
   switch (env.MEDIA_PROVIDER) {
     case 'openai-dall-e':
     case 'stability-ai':
-      // Not implemented yet, falling back to stub
-      console.warn(`[Media] ${env.MEDIA_PROVIDER} is not fully implemented yet. Falling back to stub.`);
-      providerInstance = new StubMediaProvider();
+      console.warn(`[Media] ${env.MEDIA_PROVIDER} is not fully implemented yet. Falling back to Pollinations AI.`);
+      providerInstance = new PollinationsMediaProvider();
       break;
     case 'stub':
-    default:
       providerInstance = new StubMediaProvider();
+      break;
+    default:
+      providerInstance = new PollinationsMediaProvider();
       break;
   }
 

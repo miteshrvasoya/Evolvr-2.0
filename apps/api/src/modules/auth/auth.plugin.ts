@@ -29,6 +29,10 @@ async function authPlugin(app: FastifyInstance) {
   // Decorator to protect routes globally
   app.decorate('authenticate', async function (request: FastifyRequest, reply: FastifyReply) {
     try {
+      const query = request.query as { token?: string } | undefined;
+      if (query?.token && !request.headers.authorization) {
+        request.headers.authorization = `Bearer ${query.token}`;
+      }
       await request.jwtVerify();
     } catch (err) {
       reply.status(401).send({ error: 'Unauthorized', message: 'Invalid or missing token' });

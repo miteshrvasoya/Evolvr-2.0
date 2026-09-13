@@ -64,4 +64,30 @@ export default async function contentRoutes(app: FastifyInstance) {
     await sql`UPDATE posts SET status = 'failed', failure_reason = ${reason} WHERE id = ${postId}`;
     return { success: true, data: {} };
   });
+
+  app.get('/content/drafts', async (request: any, reply) => {
+    const { id: userId } = request.user;
+    const accountId = await getPrimaryAccount(userId);
+    if (!accountId) return { success: true, data: [] };
+
+    const ideas = await sql`
+      SELECT 
+        ci.*,
+        json_agg(
+          json_build_object(
+            'id', ca.id,
+            'asset_type', ca.asset_type,
+            'storage_url', ca.storage_url,
+            'prompt', ca.prompt
+          )
+        ) FILTER (WHERE ca.id IS NOT NULL) as assets
+      FROM content_ideas ci
+      LEFT JOIN content_assets ca ON ci.id = ca.content_idea_id
+      WHERE ci.social_account_id = ${accountId}
+      GROUP BY ci.id
+      ORDER BY ci.created_at DESC
+    `;
+
+    return { success: true, data: ideas };
+  });
 }

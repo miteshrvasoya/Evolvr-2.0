@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useContentCalendar } from '@/lib/hooks/use-content-calendar';
+import { useContentDrafts } from '@/lib/hooks/use-content-drafts';
 import { PostStatusBadge } from '@/components/dashboard/post-status-badge';
 import { ContentIdeaCard } from '@/components/dashboard/content-idea-card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -55,8 +56,9 @@ function PostRow({ post, idea, onApprove, onReject }: {
 
 export default function ContentPage() {
   const { data, isLoading, approvePost, rejectPost } = useContentCalendar();
+  const { data: draftsData, isLoading: draftsLoading } = useContentDrafts();
 
-  if (isLoading) {
+  if (isLoading || draftsLoading) {
     return (
       <div className="space-y-4">
         <Skeleton className="h-10 w-80" />
@@ -92,10 +94,20 @@ export default function ContentPage() {
     { key: 'failed', label: 'Failed', posts: data.failed },
   ] as const;
 
+  const drafts = draftsData || [];
+
   return (
     <div className="space-y-6">
-      <Tabs defaultValue="scheduled">
+      <Tabs defaultValue="drafts">
         <TabsList>
+          <TabsTrigger value="drafts">
+            Draft Ideas
+            {drafts.length > 0 && (
+              <span className="ml-1.5 rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold">
+                {drafts.length}
+              </span>
+            )}
+          </TabsTrigger>
           {tabs.map((tab) => (
             <TabsTrigger key={tab.key} value={tab.key}>
               {tab.label}
@@ -107,6 +119,42 @@ export default function ContentPage() {
             </TabsTrigger>
           ))}
         </TabsList>
+
+        <TabsContent value="drafts">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Generated Draft Ideas</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {drafts.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-4 text-center">
+                  No drafts available. Trigger the agent to generate some!
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {drafts.map((draft: any) => (
+                    <Card key={draft.id} className="overflow-hidden">
+                      {draft.assets && draft.assets.length > 0 && (
+                        <div className="aspect-square bg-muted relative">
+                          <img 
+                            src={draft.assets[0].storage_url} 
+                            alt={draft.concept}
+                            className="object-cover w-full h-full"
+                          />
+                        </div>
+                      )}
+                      <CardContent className="p-4 space-y-3">
+                        <Badge variant="outline" className="capitalize">{draft.format}</Badge>
+                        <p className="font-medium text-sm line-clamp-2">{draft.hook}</p>
+                        <p className="text-xs text-muted-foreground line-clamp-3">{draft.caption}</p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         {tabs.map((tab) => (
           <TabsContent key={tab.key} value={tab.key}>

@@ -17,6 +17,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     logger: {
       level: env.LOG_LEVEL,
     },
+    disableRequestLogging: true,
   });
 
   await app.register(cors, {
@@ -58,6 +59,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   const frontendRoutes = await import('./modules/system/frontend.routes.js');
   const settingsRoutes = await import('./modules/system/settings.routes.js');
   const contentRoutes = await import('./modules/content/content.routes.js');
+  const strategyRoutes = await import('./modules/strategy/strategy.routes.js');
   const apiLoggerMiddleware = await import('./modules/common/api-logger.middleware.js');
   const { LoggerService } = await import('./modules/common/logger.service.js');
 
@@ -90,6 +92,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(frontendRoutes.default, { prefix: '/api' });
   await app.register(settingsRoutes.default, { prefix: '/api' });
   await app.register(contentRoutes.default, { prefix: '/api' });
+  await app.register(strategyRoutes.default, { prefix: '/api' });
 
   // Health check endpoint
   app.get('/health', async () => {

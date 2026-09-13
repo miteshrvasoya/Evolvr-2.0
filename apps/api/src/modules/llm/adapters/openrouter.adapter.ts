@@ -28,9 +28,10 @@ export class OpenRouterAdapter implements LLMProvider {
     const start = Date.now();
 
     let response;
+    const targetModel = request.model || this.defaultModel;
     try {
       response = await this.client.chat.completions.create({
-        model: this.defaultModel,
+        model: targetModel,
         messages: [
           { role: 'system', content: request.systemPrompt },
           { role: 'user', content: request.userPrompt },
@@ -45,7 +46,7 @@ export class OpenRouterAdapter implements LLMProvider {
         method: 'POST',
         url: `${env.OPENROUTER_BASE_URL}/chat/completions`,
         statusCode: e.status || 500,
-        requestPayload: { model: this.defaultModel, userPrompt: request.userPrompt },
+        requestPayload: { model: targetModel, userPrompt: request.userPrompt },
         responsePayload: { error: e.message },
         latencyMs
       });
@@ -54,7 +55,7 @@ export class OpenRouterAdapter implements LLMProvider {
         stackTrace: e.stack,
         context: {
           action: 'OpenRouterAdapter.generateText',
-          model: this.defaultModel
+          model: targetModel
         }
       });
       throw e;
@@ -67,7 +68,7 @@ export class OpenRouterAdapter implements LLMProvider {
       method: 'POST',
       url: `${env.OPENROUTER_BASE_URL}/chat/completions`,
       statusCode: 200,
-      requestPayload: { model: this.defaultModel, userPrompt: request.userPrompt },
+      requestPayload: { model: targetModel, userPrompt: request.userPrompt },
       responsePayload: { content },
       latencyMs: Date.now() - start
     });
@@ -85,9 +86,10 @@ export class OpenRouterAdapter implements LLMProvider {
     const start = Date.now();
 
     let response;
+    const targetModel = request.model || this.strongModel;
     try {
       response = await this.client.chat.completions.create({
-        model: this.strongModel, // Use strong model for structured outputs/reasoning
+        model: targetModel, // Use strong model for structured outputs/reasoning
         messages: [
           { role: 'system', content: request.systemPrompt },
           { role: 'user', content: request.userPrompt },
@@ -103,7 +105,7 @@ export class OpenRouterAdapter implements LLMProvider {
         method: 'POST',
         url: `${env.OPENROUTER_BASE_URL}/chat/completions`,
         statusCode: e.status || 500,
-        requestPayload: { model: this.strongModel, schema: request.schemaName, userPrompt: request.userPrompt },
+        requestPayload: { model: targetModel, schema: request.schemaName, userPrompt: request.userPrompt },
         responsePayload: { error: e.message },
         latencyMs
       });
@@ -112,7 +114,7 @@ export class OpenRouterAdapter implements LLMProvider {
         stackTrace: e.stack,
         context: {
           action: 'OpenRouterAdapter.generateStructured',
-          model: this.strongModel,
+          model: targetModel,
           schemaName: request.schemaName
         }
       });
@@ -126,7 +128,7 @@ export class OpenRouterAdapter implements LLMProvider {
       method: 'POST',
       url: `${env.OPENROUTER_BASE_URL}/chat/completions`,
       statusCode: 200,
-      requestPayload: { model: this.strongModel, schema: request.schemaName, userPrompt: request.userPrompt },
+      requestPayload: { model: targetModel, schema: request.schemaName, userPrompt: request.userPrompt },
       responsePayload: { content },
       latencyMs: Date.now() - start
     });

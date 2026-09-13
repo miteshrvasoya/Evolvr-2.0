@@ -273,44 +273,5 @@ export default async function dashboardRoutes(app: FastifyInstance) {
     };
   });
 
-  app.get('/strategy', async (request: any, reply) => {
-    const { id: userId } = request.user;
-    const accountId = await getPrimaryAccount(userId);
 
-    if (!accountId) {
-      return { success: true, data: null };
-    }
-
-    const strategiesRaw = await sql`
-      SELECT * FROM strategy_versions 
-      WHERE social_account_id = ${accountId} 
-      ORDER BY version_number DESC 
-    `;
-    const history = strategiesRaw.map(s => {
-      const parseJson = (val: any) => typeof val === 'string' ? JSON.parse(val) : val;
-      return {
-        ...s,
-        objective: parseJson(s.objective),
-        contentMix: parseJson(s.contentMix),
-        cadence: parseJson(s.cadence),
-        experimentPlan: parseJson(s.experimentPlan),
-        evidenceIds: parseJson(s.evidenceIds)
-      };
-    });
-    const active = history.find((s: any) => s.status === 'active') || history[0] || null;
-
-    const insights = await sql`SELECT * FROM strategic_insights WHERE social_account_id = ${accountId} ORDER BY created_at DESC LIMIT 10`;
-
-    const experiments = await sql`SELECT * FROM experiments WHERE social_account_id = ${accountId} ORDER BY created_at DESC LIMIT 10`;
-
-    return {
-      success: true,
-      data: {
-        active,
-        history,
-        insights,
-        experiments
-      }
-    };
-  });
 }

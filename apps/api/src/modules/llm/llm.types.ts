@@ -14,6 +14,7 @@ export interface LLMRequest {
   userPrompt: string;
   temperature?: number;
   maxTokens?: number;
+  model?: string;
 }
 
 export interface StructuredLLMRequest<T> extends LLMRequest {

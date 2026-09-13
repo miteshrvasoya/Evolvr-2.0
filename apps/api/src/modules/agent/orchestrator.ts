@@ -31,6 +31,8 @@ export class OrchestratorAgent {
       correlationId: runId,
       idempotencyKey: `daily-cycle-${socialAccountId}-${new Date().toISOString().split('T')[0]}`,
       attemptNumber: 1
+    }, {
+      jobId: runId
     });
 
     return { status: 'started', runId };
