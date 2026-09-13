@@ -1,6 +1,6 @@
 'use client';
 
-import { CheckCircle2, Circle, Loader2, XCircle, RefreshCw, PauseCircle, AlertCircle } from 'lucide-react';
+import { CheckCircle2, Circle, Loader2, XCircle, RefreshCw, PauseCircle, AlertCircle, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export type PipelineStepStatus = 'completed' | 'running' | 'retrying' | 'pending' | 'failed' | 'blocked' | 'paused' | 'queued';
@@ -17,13 +17,11 @@ export interface PipelineStep {
 const KNOWN_PIPELINE: { key: string; label: string }[] = [
   { key: 'evaluate_next_action', label: 'Evaluate' },
   { key: 'run_research',         label: 'Research'  },
-  { key: 'revise_strategy',      label: 'Strategy'  },
-  { key: 'generate_content',     label: 'Generate'  },
-  { key: 'validate_content',     label: 'Validate'  },
-  { key: 'schedule_post',        label: 'Schedule'  },
+  { key: 'strategy_revision',    label: 'Strategy'  },
+  { key: 'content_generation',   label: 'Generate'  },
   { key: 'publish_post',         label: 'Publish'   },
-  { key: 'collect_analytics',    label: 'Analytics' },
-  { key: 'run_learning',         label: 'Learn'     },
+  { key: 'fetch_analytics',      label: 'Analytics' },
+  { key: 'learning_analysis',    label: 'Learn'     },
 ];
 
 function StepIcon({ status }: { status: PipelineStepStatus }) {
@@ -96,15 +94,15 @@ export function WorkflowPipeline({ steps, className, compact = false }: Workflow
 
   if (compact) {
     return (
-      <div className={cn('flex items-center gap-1 flex-wrap', className)}>
+      <div className={cn('flex items-center gap-x-1.5 gap-y-2 flex-wrap', className)}>
         {pipeline.map((step, i) => (
-          <div key={step.key} className="flex items-center gap-1">
+          <div key={step.key} className="flex items-center gap-1.5 whitespace-nowrap">
             <div className="flex items-center gap-1" title={step.label}>
               <StepIcon status={step.status} />
               <span className={cn('text-[11px]', stepLabel(step.status))}>{step.label}</span>
             </div>
             {i < pipeline.length - 1 && (
-              <span className="text-muted-foreground/30 text-xs">→</span>
+              <ChevronRight className="h-3 w-3 text-muted-foreground/30 flex-shrink-0" />
             )}
           </div>
         ))}

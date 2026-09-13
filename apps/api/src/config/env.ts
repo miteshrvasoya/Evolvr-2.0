@@ -62,7 +62,8 @@ const envSchema = z.object({
   STORAGE_PUBLIC_URL: z.string().default(''),
 
   // Media Generation
-  MEDIA_PROVIDER: z.enum(['stub', 'openai-dall-e', 'stability-ai', 'pollinations']).default('stub'),
+  MEDIA_PROVIDER: z.enum(['stub', 'openai-dall-e', 'stability-ai', 'pollinations', 'lmstudio']).default('stub'),
+  LMSTUDIO_API_URL: z.string().default('http://localhost:1234/v1'),
   STABILITY_API_KEY: z.string().default(''),
 
   // Encryption
