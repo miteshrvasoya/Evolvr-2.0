@@ -7,7 +7,7 @@ export const createOrchestratorWorker = () => {
   const worker = new Worker('orchestrator', async (job: Job) => {
     const { socialAccountId, agentRunId, goalId } = job.data;
     const tracker = new AgentRunTracker(agentRunId);
-    
+
     // Mark the agent run as running if it was queued
     await sql`UPDATE agent_runs SET status = 'running' WHERE id = ${agentRunId} AND status = 'queued'`;
 
@@ -48,7 +48,7 @@ export const createOrchestratorWorker = () => {
       const postsNeedingMetrics = await sql`
         SELECT p.id FROM posts p
         LEFT JOIN post_metrics pm ON p.id = pm.post_id 
-          AND pm.recorded_at > NOW() - INTERVAL '24 hours'
+          AND pm.captured_at > NOW() - INTERVAL '24 hours'
         WHERE p.social_account_id = ${socialAccountId} 
         AND p.status = 'published'
         AND p.published_at < NOW() - INTERVAL '24 hours'
@@ -125,33 +125,33 @@ export const createOrchestratorWorker = () => {
       // All phases healthy
       await tracker.addLog('All systems healthy. No immediate autonomous action required.');
       await tracker.completeStep(stepId, { action: 'none' });
-      
+
       // Update run to completed if no actions were taken.
       await sql`UPDATE agent_runs SET status = 'completed', completed_at = NOW() WHERE id = ${agentRunId}`;
-      
+
       return { action: 'none' };
 
     } catch (error: any) {
       console.error(`[OrchestratorWorker] Failed job ${job.id}`, error);
       const isRetryable = true;
-      
+
       let nextRetryAt;
       if (isRetryable && job.opts.attempts && job.attemptsMade < job.opts.attempts) {
-          const delay = job.opts.backoff ? 5000 * Math.pow(2, job.attemptsMade) : 5000;
-          nextRetryAt = new Date(Date.now() + delay);
+        const delay = job.opts.backoff ? 5000 * Math.pow(2, job.attemptsMade) : 5000;
+        nextRetryAt = new Date(Date.now() + delay);
       }
-      
+
       await tracker.failStep(stepId, error.message, isRetryable, nextRetryAt);
-      throw error; 
+      throw error;
     }
-  }, { 
+  }, {
     connection: redisConnection,
     limiter: { max: 10, duration: 1000 }
   });
 
   worker.on('failed', async (job, err) => {
     if (job && (!job.opts.attempts || job.attemptsMade >= job.opts.attempts)) {
-       await sql`UPDATE agent_runs SET status = 'failed', error_message = ${err.message}, completed_at = NOW() WHERE id = ${job.data.agentRunId}`;
+      await sql`UPDATE agent_runs SET status = 'failed', error_message = ${err.message}, completed_at = NOW() WHERE id = ${job.data.agentRunId}`;
     }
   });
 

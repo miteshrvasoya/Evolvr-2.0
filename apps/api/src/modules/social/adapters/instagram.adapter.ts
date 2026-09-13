@@ -153,7 +153,7 @@ export class InstagramAdapter {
 
   async getAccountInsights(accessToken: string, platformAccountId: string) {
     // The Instagram Graph API uses 'views' instead of 'impressions' for basic display API and some creator accounts
-    const url = `${this.baseGraphUrl}/${platformAccountId}/insights?metric=views,reach,profile_views&period=day&access_token=${accessToken}`;
+    const url = `${this.baseGraphUrl}/${platformAccountId}/insights?metric=views,reach,profile_views,engagements,impressions&period=day&access_token=${accessToken}`;
     const { response, data } = await this.fetchWithLog(url);
     if (!response.ok) {
       LoggerService.logError({

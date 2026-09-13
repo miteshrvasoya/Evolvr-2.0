@@ -59,6 +59,7 @@ export class ResearchAgent {
           url: r.url
         }));
       } else {
+        await tracker.addLog(`Initiating Serper API search...`);
         const searchRes = await fetch('https://google.serper.dev/search', {
           method: 'POST',
           headers: {
@@ -71,9 +72,18 @@ export class ResearchAgent {
         const latencyMs = Date.now() - start;
         await tracker.logToolCall(stepId, `Serper Search: "${query}"`, 'serper', 'https://google.serper.dev/search', searchRes.status, latencyMs);
 
-        if (!searchRes.ok) throw new Error(`Serper API error: ${searchRes.statusText}`);
+        if (!searchRes.ok) {
+          const errText = await searchRes.text();
+          await tracker.addLog(`Serper API failed with status ${searchRes.status}: ${errText}`);
+          throw new Error(`Serper API error: ${searchRes.status} - ${errText}`);
+        }
 
         const searchData = await searchRes.json();
+        
+        if (!searchData.organic) {
+          await tracker.addLog(`Serper API returned unexpected format: ${JSON.stringify(searchData)}`);
+        }
+        
         sources = (searchData.organic || []).slice(0, 5).map((r: any) => ({
           title: r.title,
           snippet: r.snippet,
