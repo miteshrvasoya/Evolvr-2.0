@@ -1,5 +1,9 @@
 import { FastifyInstance } from 'fastify';
 import { sql } from '../../db/client.js';
+import { ContentScheduler } from './scheduler.js';
+import { LocalStorageAdapter } from '../storage/local.adapter.js';
+import path from 'path';
+import fs from 'fs';
 
 export default async function contentRoutes(app: FastifyInstance) {
   app.addHook('onRequest', app.authenticate);
@@ -63,6 +67,53 @@ export default async function contentRoutes(app: FastifyInstance) {
     const { reason } = request.body;
     await sql`UPDATE posts SET status = 'failed', failure_reason = ${reason} WHERE id = ${postId}`;
     return { success: true, data: {} };
+  });
+
+  // Schedule an idea (turns it into a post)
+  app.post('/content/ideas/:ideaId/approve', async (request: any, reply) => {
+    const { ideaId } = request.params;
+    const { scheduledAt } = request.body;
+    const { id: userId } = request.user;
+    const accountId = await getPrimaryAccount(userId);
+    
+    if (!accountId) throw new Error('Account not found');
+
+    const scheduler = new ContentScheduler();
+    const scheduledDate = scheduledAt ? new Date(scheduledAt) : undefined;
+    const result = await scheduler.schedulePost(ideaId, accountId, scheduledDate);
+
+    return { success: true, data: result };
+  });
+
+  // Edit an idea (e.g. update caption before approval)
+  app.patch('/content/ideas/:ideaId', async (request: any, reply) => {
+    const { ideaId } = request.params;
+    const { caption, hook } = request.body;
+    await sql`UPDATE content_ideas SET caption = COALESCE(${caption}, caption), hook = COALESCE(${hook}, hook) WHERE id = ${ideaId}`;
+    return { success: true, data: {} };
+  });
+
+  // Upload an asset for an idea
+  app.post('/content/ideas/:ideaId/asset', async (request: any, reply) => {
+    const { ideaId } = request.params;
+    const data = await request.file();
+    if (!data) throw new Error('No file uploaded');
+
+    const buffer = await data.toBuffer();
+    const storageAdapter = new LocalStorageAdapter();
+    const ext = path.extname(data.filename) || '.jpg';
+    const filename = `manual_${ideaId}_${Date.now()}${ext}`;
+    const storageUrl = await storageAdapter.saveFile(filename, buffer);
+
+    // Update or insert asset
+    const existingAsset = await sql`SELECT id FROM content_assets WHERE content_idea_id = ${ideaId} LIMIT 1`;
+    if (existingAsset.length > 0) {
+      await sql`UPDATE content_assets SET storage_url = ${storageUrl}, mime_type = ${data.mimetype} WHERE id = ${existingAsset[0].id}`;
+    } else {
+      await sql`INSERT INTO content_assets (content_idea_id, asset_type, storage_url, mime_type) VALUES (${ideaId}, 'image', ${storageUrl}, ${data.mimetype})`;
+    }
+
+    return { success: true, data: { storageUrl } };
   });
 
   app.get('/content/drafts', async (request: any, reply) => {

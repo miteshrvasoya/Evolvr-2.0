@@ -2,6 +2,7 @@ import Fastify, { FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import cookie from '@fastify/cookie';
+import multipart from '@fastify/multipart';
 import { env } from './config/env.js';
 import { sql } from './db/client.js';
 import { startWorkers, stopWorkers } from './workers/index.js';
@@ -19,6 +20,8 @@ export async function buildApp(): Promise<FastifyInstance> {
     },
     disableRequestLogging: true,
   });
+
+  await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024 } }); // 10MB limit
 
   await app.register(cors, {
     origin: true,

@@ -5,6 +5,7 @@ import { useContentCalendar } from '@/lib/hooks/use-content-calendar';
 import { useContentDrafts } from '@/lib/hooks/use-content-drafts';
 import { PostStatusBadge } from '@/components/dashboard/post-status-badge';
 import { ContentIdeaCard } from '@/components/dashboard/content-idea-card';
+import { ManageDraftDialog } from '@/components/dashboard/manage-draft-dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -56,7 +57,7 @@ function PostRow({ post, idea, onApprove, onReject }: {
 
 export default function ContentPage() {
   const { data, isLoading, approvePost, rejectPost } = useContentCalendar();
-  const { data: draftsData, isLoading: draftsLoading } = useContentDrafts();
+  const { data: draftsData, isLoading: draftsLoading, approveIdea, updateIdea, uploadAsset } = useContentDrafts();
 
   if (isLoading || draftsLoading) {
     return (
@@ -143,11 +144,18 @@ export default function ContentPage() {
                           />
                         </div>
                       )}
-                      <CardContent className="p-4 space-y-3">
-                        <Badge variant="outline" className="capitalize">{draft.format}</Badge>
-                        <p className="font-medium text-sm line-clamp-2">{draft.hook}</p>
-                        <p className="text-xs text-muted-foreground line-clamp-3">{draft.caption}</p>
-                      </CardContent>
+                      <ManageDraftDialog 
+                        draft={draft}
+                        onApprove={(scheduledAt) => approveIdea(draft.id, scheduledAt)}
+                        onUpdate={(data) => updateIdea(draft.id, data)}
+                        onUpload={(file) => uploadAsset(draft.id, file)}
+                      >
+                        <CardContent className="p-4 space-y-3 cursor-pointer hover:bg-accent/50 transition-colors">
+                          <Badge variant="outline" className="capitalize">{draft.format}</Badge>
+                          <p className="font-medium text-sm line-clamp-2">{draft.hook}</p>
+                          <p className="text-xs text-muted-foreground line-clamp-3">{draft.caption}</p>
+                        </CardContent>
+                      </ManageDraftDialog>
                     </Card>
                   ))}
                 </div>
