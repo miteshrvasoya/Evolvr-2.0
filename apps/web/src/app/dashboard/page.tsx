@@ -2,40 +2,70 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Users, Radio, TrendingUp, FileText, Bot, RefreshCw, ArrowRight } from 'lucide-react';
+import {
+  Users,
+  Radio,
+  TrendingUp,
+  Heart,
+  Bot,
+  RefreshCw,
+  ArrowRight,
+  FileText,
+  Sparkles,
+  Target,
+} from 'lucide-react';
 import { useDashboard } from '@/lib/hooks/use-dashboard';
 import { useAgentStatus } from '@/lib/hooks/use-agent-status';
 import { MetricCard } from '@/components/dashboard/metric-card';
 import { GoalProgress } from '@/components/dashboard/goal-progress';
-import { GrowthChart } from '@/components/dashboard/growth-chart';
+import { FollowerAreaChart } from '@/components/dashboard/follower-area-chart';
 import { AgentStateBadge } from '@/components/dashboard/agent-state-badge';
-import { PostStatusBadge } from '@/components/dashboard/post-status-badge';
-import { DecisionLogEntry } from '@/components/dashboard/decision-log-entry';
+import { AgentSummaryWidget } from '@/components/dashboard/agent-summary-widget';
+import { UpcomingPostsList } from '@/components/dashboard/upcoming-posts-list';
+import { RecentDecisionsFeed } from '@/components/dashboard/recent-decisions-feed';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import { formatDateTime } from '@/lib/utils';
 import { useToast } from '@/lib/hooks/use-toast';
+
+// ── Skeleton ─────────────────────────────────────────────────────────────────
 
 function DashboardSkeleton() {
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center mb-6">
-        <Skeleton className="h-10 w-48" />
-        <Skeleton className="h-10 w-32" />
+    <div className="space-y-6 pb-8 animate-pulse">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="space-y-1.5">
+          <Skeleton className="h-8 w-44" />
+          <Skeleton className="h-4 w-64" />
+        </div>
+        <div className="flex gap-2">
+          <Skeleton className="h-9 w-28" />
+          <Skeleton className="h-9 w-36" />
+        </div>
       </div>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* KPI cards */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {Array.from({ length: 4 }).map((_, i) => (
-          <Skeleton key={i} className="h-28" />
+          <Skeleton key={i} className="h-32 rounded-xl" />
         ))}
       </div>
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <Skeleton className="h-48" />
-        <Skeleton className="col-span-2 h-48" />
+      {/* Charts row */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <Skeleton className="lg:col-span-2 h-72 rounded-xl" />
+        <Skeleton className="h-72 rounded-xl" />
+      </div>
+      {/* Bottom row */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <Skeleton className="h-64 rounded-xl" />
+        <Skeleton className="h-64 rounded-xl" />
+        <Skeleton className="h-64 rounded-xl" />
       </div>
     </div>
   );
 }
+
+// ── Main ──────────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
   const { data, isLoading, syncAnalytics } = useDashboard();
@@ -46,14 +76,36 @@ export default function DashboardPage() {
   if (isLoading) return <DashboardSkeleton />;
   if (!data) return null;
 
-  const { accountId, accountMetrics, goal, upcomingPosts, metricsHistory } = data;
+  const {
+    accountId,
+    accountMetrics,
+    trends,
+    engagementRate,
+    publishedLast7Days,
+    goal,
+    upcomingPosts,
+    metricsHistory,
+    agentRunSummary,
+    recentWins,
+  } = data;
+
+  // Greeting based on time of day
+  const hour = new Date().getHours();
+  const greeting =
+    hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+
+  const today = new Date().toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  });
 
   const handleSync = async () => {
     if (!accountId) return;
     setIsSyncing(true);
     const success = await syncAnalytics(accountId);
     setIsSyncing(false);
-    
+
     if (success) {
       toast({
         title: 'Sync Complete',
@@ -69,178 +121,147 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500 pb-8">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="space-y-6 pb-10 animate-in fade-in duration-500">
+      {/* ── Page Header ──────────────────────────────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Overview</h1>
-          <p className="text-muted-foreground mt-1">
-            Monitor your social media performance and AI agent activity.
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-primary" />
+            <span className="text-xs font-medium text-muted-foreground">{today}</span>
+          </div>
+          <h1 className="mt-1 text-2xl font-bold tracking-tight">{greeting} 👋</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Here&apos;s what&apos;s happening with your social growth today.
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={handleSync} 
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {agentStatus && (
+            <Button variant="outline" size="sm" asChild className="gap-2 text-xs">
+              <Link href="/dashboard/agent">
+                <AgentStateBadge state={agentStatus.state} size="sm" />
+                View Agent
+                <ArrowRight className="h-3 w-3" />
+              </Link>
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleSync}
             disabled={isSyncing || !accountId}
-            className="shadow-sm bg-white/50 dark:bg-black/50 backdrop-blur-sm"
+            className="gap-2 text-xs"
           >
-            <RefreshCw className={`mr-2 h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
-            Sync Data
+            <RefreshCw className={`h-3.5 w-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+            {isSyncing ? 'Syncing…' : 'Sync Data'}
           </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Quick Agent Status */}
-        <div className="lg:col-span-4">
-          {agentStatus && (
-            <Card className="bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border-primary/20 shadow-sm overflow-hidden relative">
-              <div className="absolute inset-y-0 left-0 w-1 bg-primary"></div>
-              <CardContent className="p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div className="flex items-center gap-4">
-                  <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
-                    <Bot className="h-5 w-5 text-primary" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-semibold text-sm">Evolvr Agent</h3>
-                      <AgentStateBadge state={agentStatus.state} />
-                    </div>
-                    {agentStatus.currentRun ? (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Currently focusing on: <span className="font-medium text-foreground">{agentStatus.currentRun.runType.replace(/_/g, ' ')}</span>
-                      </p>
-                    ) : (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Waiting for next scheduled task.
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <Button variant="ghost" size="sm" asChild className="shrink-0 group">
-                  <Link href="/dashboard/agent">
-                    View Details
-                    <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
-                  </Link>
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-        </div>
+      {/* ── KPI Metric Cards ─────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <MetricCard
+          label="Total Followers"
+          value={accountMetrics.followers ?? 0}
+          icon={Users}
+          trend={trends?.followers}
+          format="number"
+          gradientFrom="from-blue-500"
+          gradientTo="to-blue-600"
+        />
+        <MetricCard
+          label="Weekly Reach"
+          value={accountMetrics.reach ?? 0}
+          icon={Radio}
+          trend={trends?.reach}
+          format="number"
+          gradientFrom="from-violet-500"
+          gradientTo="to-violet-600"
+        />
+        <MetricCard
+          label="Engagement Rate"
+          value={engagementRate ?? 0}
+          icon={Heart}
+          trend={trends?.impressions}
+          format="percent"
+          gradientFrom="from-pink-500"
+          gradientTo="to-rose-500"
+          description="30-day avg on published posts"
+        />
+        <MetricCard
+          label="Posts This Week"
+          value={publishedLast7Days ?? upcomingPosts.length}
+          icon={FileText}
+          format="number"
+          gradientFrom="from-emerald-500"
+          gradientTo="to-teal-500"
+          description={`${upcomingPosts.length} scheduled upcoming`}
+        />
+      </div>
 
-        {/* Key Metrics */}
-        <div className="lg:col-span-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <MetricCard
-            label="Total Followers"
-            value={accountMetrics.followers}
-            icon={Users}
-            format="number"
-          />
-          <MetricCard
-            label="Weekly Reach"
-            value={accountMetrics.reach}
-            icon={Radio}
-            format="number"
-          />
-          <MetricCard
-            label="Profile Visits"
-            value={accountMetrics.profileVisits}
-            icon={TrendingUp}
-            format="number"
-          />
-          <MetricCard
-            label="Posts Scheduled"
-            value={upcomingPosts.length}
-            icon={FileText}
-            format="number"
-          />
-        </div>
-
-        {/* Goal + Growth Chart */}
-        <div className="lg:col-span-1 flex flex-col gap-6">
-          {goal ? (
-            <GoalProgress goal={goal} metrics={accountMetrics} />
-          ) : (
-            <Card className="flex-1 flex flex-col items-center justify-center text-center p-6 border-dashed">
-              <Bot className="h-8 w-8 text-muted-foreground mb-3 opacity-50" />
-              <CardTitle className="text-sm">No Active Goal</CardTitle>
-              <CardDescription className="mt-2 text-xs">
-                Set an overarching goal in settings to let the agent guide your growth.
-              </CardDescription>
-            </Card>
-          )}
-        </div>
-        
-        <Card className="lg:col-span-3 shadow-sm">
+      {/* ── Chart + Goal ─────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        {/* Area Chart — 2/3 width */}
+        <Card className="lg:col-span-2">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base font-medium">Follower Growth (7d)</CardTitle>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-sm font-semibold">Follower & Reach Growth</CardTitle>
+                <CardDescription className="text-xs mt-0.5">Last 7 data points</CardDescription>
+              </div>
+              <Button variant="ghost" size="sm" className="text-xs h-7" asChild>
+                <Link href="/dashboard/analytics">
+                  Full Analytics <ArrowRight className="ml-1 h-3 w-3" />
+                </Link>
+              </Button>
+            </div>
           </CardHeader>
-          <CardContent>
-            <GrowthChart data={metricsHistory} />
-          </CardContent>
-        </Card>
-
-        {/* Upcoming Posts + Latest Decision */}
-        <Card className="lg:col-span-2 shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-base font-medium">Upcoming Posts</CardTitle>
-            <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
-              <Link href="/dashboard/content"><ArrowRight className="h-4 w-4" /></Link>
-            </Button>
-          </CardHeader>
-          <CardContent>
-            {upcomingPosts.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-8 text-center">
-                <FileText className="h-8 w-8 text-muted-foreground mb-3 opacity-20" />
-                <p className="text-sm text-muted-foreground">No posts scheduled yet</p>
+          <CardContent className="pb-4">
+            {metricsHistory.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-64 text-center">
+                <TrendingUp className="h-8 w-8 text-muted-foreground/20 mb-3" />
+                <p className="text-sm text-muted-foreground">No historical data yet</p>
+                <p className="text-xs text-muted-foreground/60 mt-1">
+                  Sync your Instagram account to start tracking.
+                </p>
               </div>
             ) : (
-              <ul className="space-y-4 mt-2">
-                {upcomingPosts.slice(0, 3).map((post) => (
-                  <li key={post.id} className="flex items-start justify-between gap-4 p-3 rounded-md bg-muted/40 hover:bg-muted/60 transition-colors">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium line-clamp-2 leading-relaxed">{post.caption}</p>
-                      <div className="flex items-center gap-2 mt-2">
-                        <span className="text-xs text-muted-foreground font-medium bg-background px-2 py-0.5 rounded-full border">
-                          {post.mediaType}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {formatDateTime(post.scheduledAt)}
-                        </span>
-                      </div>
-                    </div>
-                    <PostStatusBadge status={post.status} />
-                  </li>
-                ))}
-              </ul>
+              <FollowerAreaChart data={metricsHistory} />
             )}
           </CardContent>
         </Card>
 
-        <Card className="lg:col-span-2 shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-base font-medium">Recent Agent Activity</CardTitle>
-            <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
-              <Link href="/dashboard/agent"><ArrowRight className="h-4 w-4" /></Link>
+        {/* Goal Progress — 1/3 width */}
+        {goal ? (
+          <GoalProgress goal={goal} metrics={accountMetrics} />
+        ) : (
+          <Card className="flex flex-col items-center justify-center text-center p-6 border-dashed">
+            <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-muted">
+              <Target className="h-5 w-5 text-muted-foreground opacity-50" />
+            </div>
+            <CardTitle className="text-sm font-semibold">No Active Goal</CardTitle>
+            <CardDescription className="mt-2 text-xs leading-relaxed">
+              Set a growth goal in Settings to let the agent guide your strategy.
+            </CardDescription>
+            <Button variant="outline" size="sm" className="mt-4 text-xs" asChild>
+              <Link href="/dashboard/settings">Set a Goal</Link>
             </Button>
-          </CardHeader>
-          <CardContent>
-            {agentStatus?.recentDecisions.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-8 text-center">
-                <Bot className="h-8 w-8 text-muted-foreground mb-3 opacity-20" />
-                <p className="text-sm text-muted-foreground">No recent activity logged</p>
-              </div>
-            ) : (
-              <div className="mt-2 space-y-1">
-                {agentStatus?.recentDecisions.slice(0, 3).map((d) => (
-                  <DecisionLogEntry key={d.id} decision={d} />
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+          </Card>
+        )}
+      </div>
+
+      {/* ── Bottom Three-Column Section ────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        {/* Upcoming Posts */}
+        <UpcomingPostsList posts={upcomingPosts} />
+
+        {/* Recent Agent Decisions */}
+        <RecentDecisionsFeed decisions={recentWins ?? []} />
+
+        {/* Agent Health */}
+        <AgentSummaryWidget
+          summary={agentRunSummary ?? { total: 0, completed: 0, successRate: 0, lastRunAt: null }}
+          agentState={agentStatus?.state ?? 'IDLE'}
+        />
       </div>
     </div>
   );

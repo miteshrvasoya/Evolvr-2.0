@@ -21,20 +21,29 @@ export default async function dashboardRoutes(app: FastifyInstance) {
         success: true, 
         data: { 
           accountMetrics: { followers: 0, reach: 0, profileVisits: 0, impressions: 0 },
+          trends: { followers: 0, reach: 0, profileVisits: 0, impressions: 0 },
+          engagementRate: 0,
+          publishedLast7Days: 0,
           goal: null,
           upcomingPosts: [],
-          metricsHistory: []
+          metricsHistory: [],
+          agentRunSummary: { total: 0, completed: 0, successRate: 0, lastRunAt: null },
+          recentWins: [],
         } 
       };
     }
 
-    // Fetch latest metrics
-    const metrics = await sql`SELECT * FROM account_metrics WHERE social_account_id = ${accountId} ORDER BY captured_at DESC LIMIT 1`;
-    let accountMetrics = metrics[0] || { followers: 0, reach: 0, profile_visits: 0, impressions: 0 };
+    // Fetch latest 2 metric snapshots to compute trends
+    const metricsRaw = await sql`
+      SELECT * FROM account_metrics
+      WHERE social_account_id = ${accountId}
+      ORDER BY captured_at DESC LIMIT 2
+    `;
     
     // Auto-sync if no metrics or older than 1 hour
+    let accountMetrics = metricsRaw[0] || { followers: 0, reach: 0, profile_visits: 0, impressions: 0 };
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-    if (!metrics[0] || new Date(metrics[0].captured_at) < oneHourAgo) {
+    if (!metricsRaw[0] || new Date(metricsRaw[0].captured_at) < oneHourAgo) {
       try {
         const accounts = await sql`SELECT platform_account_id, access_token_encrypted FROM social_accounts WHERE id = ${accountId}`;
         if (accounts.length > 0 && accounts[0] && accounts[0].accessTokenEncrypted) {
@@ -48,34 +57,148 @@ export default async function dashboardRoutes(app: FastifyInstance) {
             INSERT INTO account_metrics (
               social_account_id, followers, following, reach, impressions, profile_visits, raw_metrics
             ) VALUES (
-              ${accountId}, ${profile.followers || 0}, ${profile.following || 0}, ${insights.reach || 0}, ${insights.impressions || 0}, ${insights.profile_views || 0}, ${sql.json(insights)}
+              ${accountId}, ${(profile as any).followers || 0}, ${(profile as any).following || 0}, ${(insights as any).reach || 0}, ${(insights as any).impressions || 0}, ${(insights as any).profile_views || 0}, ${sql.json(insights as any)}
             ) RETURNING *
           `;
           accountMetrics = result[0] || accountMetrics;
+          // Refresh the last 2 snapshots after insert
+          const refreshed = await sql`
+            SELECT * FROM account_metrics WHERE social_account_id = ${accountId}
+            ORDER BY captured_at DESC LIMIT 2
+          `;
+          metricsRaw.splice(0, metricsRaw.length, ...refreshed);
         }
       } catch (err) {
         app.log.error(err, 'Failed to auto-sync account metrics on dashboard load');
       }
     }
 
+    // Compute trend percentages vs previous snapshot
+    const prev = metricsRaw[1];
+    const computeTrend = (current: number, previous: number | undefined) => {
+      if (!previous || previous === 0) return 0;
+      return parseFloat((((current - previous) / previous) * 100).toFixed(1));
+    };
+    const trends = {
+      followers: computeTrend(accountMetrics.followers ?? 0, prev?.followers),
+      reach: computeTrend(accountMetrics.reach ?? 0, prev?.reach),
+      profileVisits: computeTrend(accountMetrics.profileVisits ?? accountMetrics.profile_visits ?? 0, prev?.profileVisits ?? prev?.profile_visits),
+      impressions: computeTrend(accountMetrics.impressions ?? 0, prev?.impressions),
+    };
+
+    // Compute engagement rate from recent published posts (avg engagement / followers)
+    let engagementRate = 0;
+    try {
+      const recentPosts = await sql`
+        SELECT likes_count, comments_count, saves_count, shares_count, impressions_count
+        FROM posts
+        WHERE social_account_id = ${accountId}
+          AND status = 'published'
+          AND published_at >= NOW() - INTERVAL '30 days'
+        ORDER BY published_at DESC
+        LIMIT 20
+      `;
+      if (recentPosts.length > 0 && (accountMetrics.followers || 0) > 0) {
+        const totalEngagements = recentPosts.reduce((sum: number, p: any) => {
+          return sum + (p.likesCount || 0) + (p.commentsCount || 0) + (p.savesCount || 0) + (p.sharesCount || 0);
+        }, 0);
+        const avgEngagements = totalEngagements / recentPosts.length;
+        engagementRate = parseFloat(((avgEngagements / (accountMetrics.followers || 1)) * 100).toFixed(2));
+      }
+    } catch (_) {
+      // Non-critical — leave at 0
+    }
+
+    // Count posts published in the last 7 days
+    let publishedLast7Days = 0;
+    try {
+      const publishedResult = await sql`
+        SELECT COUNT(*) as count
+        FROM posts
+        WHERE social_account_id = ${accountId}
+          AND status = 'published'
+          AND published_at >= NOW() - INTERVAL '7 days'
+      `;
+      publishedLast7Days = parseInt(publishedResult[0]?.count ?? '0', 10);
+    } catch (_) { /* non-critical */ }
+
+    // Agent run summary (last 30 days)
+    let agentRunSummary = { total: 0, completed: 0, successRate: 0, lastRunAt: null as string | null };
+    try {
+      const runStats = await sql`
+        SELECT
+          COUNT(*) as total,
+          COUNT(*) FILTER (WHERE status = 'completed') as completed,
+          MAX(started_at) as last_run_at
+        FROM agent_runs
+        WHERE social_account_id = ${accountId}
+          AND started_at >= NOW() - INTERVAL '30 days'
+      `;
+      const s = runStats[0];
+      if (s) {
+        const total = parseInt(s.total ?? '0', 10);
+        const completed = parseInt(s.completed ?? '0', 10);
+        agentRunSummary = {
+          total,
+          completed,
+          successRate: total > 0 ? parseFloat(((completed / total) * 100).toFixed(1)) : 0,
+          lastRunAt: s.lastRunAt ?? null,
+        };
+      }
+    } catch (_) { /* non-critical */ }
+
+    // Recent wins — last 5 successful agent decisions (published/scheduled/insights)
+    let recentWins: any[] = [];
+    try {
+      recentWins = await sql`
+        SELECT ad.id, ad.decision_type, ad.reasoning, ad.confidence, ad.created_at
+        FROM agent_decisions ad
+        JOIN agent_runs ar ON ad.agent_run_id = ar.id
+        WHERE ar.social_account_id = ${accountId}
+          AND ad.decision_type IN ('SCHEDULE_POST', 'PUBLISH_POST', 'RECORD_INSIGHT', 'GENERATE_CONTENT_PLAN')
+        ORDER BY ad.created_at DESC
+        LIMIT 5
+      `;
+    } catch (_) { /* non-critical */ }
+
     // Fetch active goal
     const goals = await sql`SELECT * FROM admin_goals WHERE social_account_id = ${accountId} AND is_active = true LIMIT 1`;
     const goal = goals[0] || null;
     
-    // Fetch upcoming posts
-    const upcomingPosts = await sql`SELECT * FROM posts WHERE social_account_id = ${accountId} AND status = 'scheduled' ORDER BY scheduled_at ASC LIMIT 5`;
+    // Fetch upcoming posts (scheduled + awaiting approval)
+    const upcomingPosts = await sql`
+      SELECT * FROM posts
+      WHERE social_account_id = ${accountId} AND status IN ('scheduled', 'waiting_approval')
+      ORDER BY scheduled_at ASC LIMIT 5
+    `;
 
-    // Fetch metric history for chart
-    const metricsHistory = await sql`SELECT followers, reach, impressions, profile_visits, captured_at FROM account_metrics WHERE social_account_id = ${accountId} ORDER BY captured_at ASC LIMIT 7`;
+    // Fetch metric history for chart — latest 7 snapshots, re-sorted ASC for the chart
+    // (ORDER BY ASC LIMIT 7 would return the oldest 7, missing recent data)
+    const metricsHistory = await sql`
+      SELECT followers, reach, impressions, profile_visits, captured_at
+      FROM (
+        SELECT followers, reach, impressions, profile_visits, captured_at
+        FROM account_metrics
+        WHERE social_account_id = ${accountId}
+        ORDER BY captured_at DESC
+        LIMIT 7
+      ) AS recent
+      ORDER BY captured_at ASC
+    `;
 
     return {
       success: true,
       data: {
         accountId,
         accountMetrics,
+        trends,
+        engagementRate,
+        publishedLast7Days,
         goal,
         upcomingPosts,
-        metricsHistory
+        metricsHistory,
+        agentRunSummary,
+        recentWins,
       }
     };
   });
@@ -272,6 +395,4 @@ export default async function dashboardRoutes(app: FastifyInstance) {
       data: notifications
     };
   });
-
-
 }
