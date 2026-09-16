@@ -152,26 +152,95 @@ export class InstagramAdapter {
   }
 
   async getAccountInsights(accessToken: string, platformAccountId: string) {
-    // The Instagram Graph API uses 'views' instead of 'impressions' for basic display API and some creator accounts
-    const url = `${this.baseGraphUrl}/${platformAccountId}/insights?metric=views,reach,profile_views,engagements,impressions&period=day&access_token=${accessToken}`;
-    const { response, data } = await this.fetchWithLog(url);
-    if (!response.ok) {
-      LoggerService.logError({
-        errorMessage: data?.error?.message || 'Failed to fetch account insights',
-        context: { platformAccountId, errorData: data }
-      });
-      return { impressions: 0, reach: 0, profile_views: 0 };
-    }
+    // ── v25.0: fetch all interaction metrics with metric_type=total_value ──────
+    // Use a 7-day window so we get meaningful aggregated data not just 1 day
+    const since = Math.floor((Date.now() - 7 * 24 * 60 * 60 * 1000) / 1000);
+    const until = Math.floor(Date.now() / 1000);
+
+    const INTERACTION_METRICS = [
+      'reach',
+      'accounts_engaged',
+      'views',
+      'likes',
+      'comments',
+      'shares',
+      'saves',
+      'replies',
+      'reposts',
+      'total_interactions',
+      'profile_links_taps',
+    ].join(',');
+
+    const insightsUrl =
+      `${this.baseGraphUrl}/${platformAccountId}/insights` +
+      `?metric=${INTERACTION_METRICS}` +
+      `&period=day` +
+      `&metric_type=total_value` +
+      `&since=${since}` +
+      `&until=${until}` +
+      `&access_token=${accessToken}`;
+
+    const { response: insRes, data: insData } = await this.fetchWithLog(insightsUrl);
 
     const metrics: Record<string, number> = {};
-    for (const item of data.data || []) {
-      metrics[item.name] = item.values[0]?.value || 0;
+    if (insRes.ok) {
+      for (const item of insData.data || []) {
+        // total_value response: { name, total_value: { value } }
+        metrics[item.name] = item.total_value?.value ?? item.values?.[0]?.value ?? 0;
+      }
+    } else {
+      LoggerService.logError({
+        errorMessage: insData?.error?.message || 'Failed to fetch account insights',
+        context: { platformAccountId, errorData: insData },
+      });
+    }
+
+    // ── Separate request for follows_and_unfollows (needs breakdown=follow_type) ─
+    let follows = 0;
+    let unfollows = 0;
+    try {
+      const followsUrl =
+        `${this.baseGraphUrl}/${platformAccountId}/insights` +
+        `?metric=follows_and_unfollows` +
+        `&period=day` +
+        `&metric_type=total_value` +
+        `&breakdown=follow_type` +
+        `&since=${since}` +
+        `&until=${until}` +
+        `&access_token=${accessToken}`;
+
+      const { response: fuRes, data: fuData } = await this.fetchWithLog(followsUrl);
+      if (fuRes.ok) {
+        const item = fuData.data?.[0];
+        const results = item?.total_value?.breakdowns?.[0]?.results ?? [];
+        for (const r of results) {
+          const type = (r.dimension_values?.[0] ?? '').toUpperCase();
+          if (type === 'FOLLOWER' || type === 'FOLLOWS') follows += r.value ?? 0;
+          if (type === 'UNFOLLOWS') unfollows += r.value ?? 0;
+        }
+      }
+    } catch (_) {
+      // Non-critical — leave at 0
     }
 
     return {
-      impressions: metrics.views || metrics.impressions || 0,
-      reach: metrics.reach || 0,
-      profile_views: metrics.profile_views || 0,
+      // Legacy fields kept for backward compat
+      impressions: metrics.views ?? 0,
+      reach: metrics.reach ?? 0,
+      profile_views: metrics.profile_links_taps ?? 0,
+      // New comprehensive fields
+      views: metrics.views ?? 0,
+      accounts_engaged: metrics.accounts_engaged ?? 0,
+      likes: metrics.likes ?? 0,
+      comments: metrics.comments ?? 0,
+      shares: metrics.shares ?? 0,
+      saves: metrics.saves ?? 0,
+      replies: metrics.replies ?? 0,
+      reposts: metrics.reposts ?? 0,
+      total_interactions: metrics.total_interactions ?? 0,
+      profile_links_taps: metrics.profile_links_taps ?? 0,
+      follows,
+      unfollows,
     };
   }
 }

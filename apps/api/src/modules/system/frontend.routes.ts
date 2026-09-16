@@ -55,9 +55,32 @@ export default async function dashboardRoutes(app: FastifyInstance) {
           
           const result = await sql`
             INSERT INTO account_metrics (
-              social_account_id, followers, following, reach, impressions, profile_visits, raw_metrics
+              social_account_id, followers, following,
+              reach, impressions, profile_visits,
+              views, accounts_engaged, likes, comments, shares,
+              saves, replies, reposts, total_interactions,
+              profile_links_taps, follows, unfollows,
+              raw_metrics
             ) VALUES (
-              ${accountId}, ${(profile as any).followers || 0}, ${(profile as any).following || 0}, ${(insights as any).reach || 0}, ${(insights as any).impressions || 0}, ${(insights as any).profile_views || 0}, ${sql.json(insights as any)}
+              ${accountId},
+              ${(profile as any).followers || 0},
+              ${(profile as any).following || 0},
+              ${(insights as any).reach || 0},
+              ${(insights as any).views || 0},
+              ${(insights as any).profile_links_taps || 0},
+              ${(insights as any).views || 0},
+              ${(insights as any).accounts_engaged || 0},
+              ${(insights as any).likes || 0},
+              ${(insights as any).comments || 0},
+              ${(insights as any).shares || 0},
+              ${(insights as any).saves || 0},
+              ${(insights as any).replies || 0},
+              ${(insights as any).reposts || 0},
+              ${(insights as any).total_interactions || 0},
+              ${(insights as any).profile_links_taps || 0},
+              ${(insights as any).follows || 0},
+              ${(insights as any).unfollows || 0},
+              ${sql.json(insights as any)}
             ) RETURNING *
           `;
           accountMetrics = result[0] || accountMetrics;

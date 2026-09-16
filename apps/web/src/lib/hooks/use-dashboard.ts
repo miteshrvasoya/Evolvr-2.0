@@ -2,7 +2,53 @@
 
 import useSWR from 'swr';
 import { apiClient } from '@/lib/api-client';
-import type { AccountMetrics, AdminGoal, Post } from '@evolvr/types';
+import type { AdminGoal, Post } from '@evolvr/types';
+
+// Extended AccountMetrics that includes the new insight columns
+export interface InsightMetrics {
+  views: number;
+  accountsEngaged: number;
+  likes: number;
+  comments: number;
+  shares: number;
+  saves: number;
+  replies: number;
+  reposts: number;
+  totalInteractions: number;
+  profileLinksTaps: number;
+  follows: number;
+  unfollows: number;
+}
+
+// Full account metrics shape from DB (camelCase from postgres.js)
+export interface AccountMetricsRow {
+  id: string;
+  socialAccountId: string;
+  capturedAt: string;
+  followers: number;
+  following: number;
+  reach: number;
+  impressions: number;
+  profileVisits: number;
+  interactions: number;
+  websiteClicks: number;
+  // new insight columns
+  views: number;
+  accountsEngaged: number;
+  likes: number;
+  comments: number;
+  shares: number;
+  saves: number;
+  replies: number;
+  reposts: number;
+  totalInteractions: number;
+  profileLinksTaps: number;
+  follows: number;
+  unfollows: number;
+  rawMetrics: Record<string, unknown>;
+  // allow index access for dynamic lookups
+  [key: string]: unknown;
+}
 
 export interface MetricTrends {
   followers: number;
@@ -28,13 +74,13 @@ export interface RecentWin {
 
 export interface DashboardOverview {
   accountId?: string;
-  accountMetrics: AccountMetrics;
+  accountMetrics: AccountMetricsRow;
   trends: MetricTrends;
   engagementRate: number;
   publishedLast7Days: number;
   goal: AdminGoal | null;
   upcomingPosts: Post[];
-  metricsHistory: AccountMetrics[];
+  metricsHistory: AccountMetricsRow[];
   agentRunSummary: AgentRunSummary;
   recentWins: RecentWin[];
 }

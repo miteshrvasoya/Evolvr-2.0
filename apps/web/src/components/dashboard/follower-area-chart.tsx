@@ -1,20 +1,20 @@
 'use client';
 
 import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Legend,
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, Legend,
 } from 'recharts';
-import type { AccountMetrics } from '@evolvr/types';
 import { formatNumber } from '@/lib/utils';
 
+interface MetricsSnapshot {
+  capturedAt: string;
+  followers: number;
+  reach: number;
+  [key: string]: unknown;
+}
+
 interface FollowerAreaChartProps {
-  data: AccountMetrics[];
+  data: MetricsSnapshot[];
 }
 
 interface CustomTooltipProps {

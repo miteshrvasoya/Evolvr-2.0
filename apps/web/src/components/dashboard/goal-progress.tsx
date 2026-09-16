@@ -2,13 +2,21 @@
 
 import { CalendarDays, Target, Zap } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import type { AdminGoal, AccountMetrics } from '@evolvr/types';
+import type { AdminGoal } from '@evolvr/types';
 import { daysUntil, formatDate, formatNumber } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 
+interface MetricValues {
+  followers: number;
+  reach?: number;
+  profileVisits?: number;
+  websiteClicks?: number;
+  [key: string]: unknown;
+}
+
 interface GoalProgressProps {
   goal: AdminGoal;
-  metrics: AccountMetrics;
+  metrics: MetricValues;
 }
 
 const metricLabels: Record<string, string> = {
@@ -22,15 +30,15 @@ const metricLabels: Record<string, string> = {
 };
 
 export function GoalProgress({ goal, metrics }: GoalProgressProps) {
-  const currentValue =
+  const currentValue: number =
     goal.primaryMetric === 'followers'
       ? metrics.followers
       : goal.primaryMetric === 'reach'
-      ? metrics.reach
+      ? (metrics.reach ?? 0)
       : goal.primaryMetric === 'profile_visits'
-      ? metrics.profileVisits
+      ? (metrics.profileVisits ?? 0)
       : goal.primaryMetric === 'website_clicks'
-      ? metrics.websiteClicks
+      ? (metrics.websiteClicks ?? 0)
       : 0;
 
   const progress = Math.min((currentValue / goal.target) * 100, 100);

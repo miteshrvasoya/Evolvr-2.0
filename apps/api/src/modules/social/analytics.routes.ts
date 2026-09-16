@@ -28,18 +28,37 @@ export default async function analyticsRoutes(app: FastifyInstance) {
     const accessToken = decryptToken(account.accessTokenEncrypted);
 
     try {
-      // 1. Fetch Account Level Insights
-      const insights = await igAdapter.getAccountInsights(accessToken, account.platformAccountId);
-      
-      // Also get current followers
-      const profile = await igAdapter.getAccountProfile(accessToken, account.platformAccountId);
+      const insights = await igAdapter.getAccountInsights(accessToken, (account as any).platformAccountId);
+      const profile = await igAdapter.getAccountProfile(accessToken, (account as any).platformAccountId);
 
-      // 2. Insert into account_metrics
       const result = await sql`
         INSERT INTO account_metrics (
-          social_account_id, followers, following, reach, impressions, profile_visits, raw_metrics
+          social_account_id, followers, following,
+          reach, impressions, profile_visits,
+          views, accounts_engaged, likes, comments, shares,
+          saves, replies, reposts, total_interactions,
+          profile_links_taps, follows, unfollows,
+          raw_metrics
         ) VALUES (
-          ${accountId}, ${profile.followers || 0}, ${profile.following || 0}, ${insights.reach || 0}, ${insights.impressions || 0}, ${insights.profile_views || 0}, ${sql.json(insights)}
+          ${accountId},
+          ${(profile as any).followers || 0},
+          ${(profile as any).following || 0},
+          ${(insights as any).reach || 0},
+          ${(insights as any).views || 0},
+          ${(insights as any).profile_links_taps || 0},
+          ${(insights as any).views || 0},
+          ${(insights as any).accounts_engaged || 0},
+          ${(insights as any).likes || 0},
+          ${(insights as any).comments || 0},
+          ${(insights as any).shares || 0},
+          ${(insights as any).saves || 0},
+          ${(insights as any).replies || 0},
+          ${(insights as any).reposts || 0},
+          ${(insights as any).total_interactions || 0},
+          ${(insights as any).profile_links_taps || 0},
+          ${(insights as any).follows || 0},
+          ${(insights as any).unfollows || 0},
+          ${sql.json(insights as any)}
         ) RETURNING *
       `;
 

@@ -23,6 +23,7 @@ import { AgentStateBadge } from '@/components/dashboard/agent-state-badge';
 import { AgentSummaryWidget } from '@/components/dashboard/agent-summary-widget';
 import { UpcomingPostsList } from '@/components/dashboard/upcoming-posts-list';
 import { RecentDecisionsFeed } from '@/components/dashboard/recent-decisions-feed';
+import { InsightsGrid } from '@/components/dashboard/insights-grid';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
@@ -50,6 +51,8 @@ function DashboardSkeleton() {
           <Skeleton key={i} className="h-32 rounded-xl" />
         ))}
       </div>
+      {/* Insights grid */}
+      <Skeleton className="h-44 rounded-xl" />
       {/* Charts row */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Skeleton className="lg:col-span-2 h-72 rounded-xl" />
@@ -197,6 +200,9 @@ export default function DashboardPage() {
           description={`${upcomingPosts.length} scheduled upcoming`}
         />
       </div>
+
+      {/* ── Engagement Breakdown ──────────────────────────────────────────────── */}
+      <InsightsGrid metrics={accountMetrics} />
 
       {/* ── Chart + Goal ─────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">

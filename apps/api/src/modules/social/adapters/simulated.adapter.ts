@@ -48,10 +48,38 @@ export class SimulatedInstagramAdapter {
   }
 
   async getAccountInsights(accessToken: string, platformAccountId: string) {
+    const reach = Math.floor(Math.random() * 100_000) + 10_000;
+    const views = Math.floor(reach * (1.2 + Math.random() * 0.6));
+    const accounts_engaged = Math.floor(reach * (0.05 + Math.random() * 0.08));
+    const likes = Math.floor(accounts_engaged * (0.6 + Math.random() * 0.2));
+    const comments = Math.floor(accounts_engaged * (0.08 + Math.random() * 0.05));
+    const shares = Math.floor(accounts_engaged * (0.06 + Math.random() * 0.04));
+    const saves = Math.floor(accounts_engaged * (0.12 + Math.random() * 0.08));
+    const replies = Math.floor(accounts_engaged * (0.03 + Math.random() * 0.03));
+    const reposts = Math.floor(accounts_engaged * (0.01 + Math.random() * 0.02));
+    const total_interactions = likes + comments + shares + saves + replies + reposts;
+    const profile_links_taps = Math.floor(reach * (0.005 + Math.random() * 0.005));
+    const follows = Math.floor(Math.random() * 500) + 50;
+    const unfollows = Math.floor(Math.random() * 150) + 10;
+
     return {
-      reach: Math.floor(Math.random() * 100000) + 10000,
-      impressions: Math.floor(Math.random() * 150000) + 15000,
-      profile_visits: Math.floor(Math.random() * 5000) + 500,
+      // Legacy compat
+      impressions: views,
+      reach,
+      profile_views: profile_links_taps,
+      // Full set
+      views,
+      accounts_engaged,
+      likes,
+      comments,
+      shares,
+      saves,
+      replies,
+      reposts,
+      total_interactions,
+      profile_links_taps,
+      follows,
+      unfollows,
     };
   }
 }
