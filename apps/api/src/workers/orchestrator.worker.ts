@@ -141,7 +141,7 @@ export const createOrchestratorWorker = () => {
         nextRetryAt = new Date(Date.now() + delay);
       }
 
-      await tracker.failStep(stepId, error.message, isRetryable, nextRetryAt);
+      await tracker.failStep(stepId, error.message, isRetryable && !!nextRetryAt, nextRetryAt);
       throw error;
     }
   }, {

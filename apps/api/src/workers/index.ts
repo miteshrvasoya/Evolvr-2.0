@@ -36,9 +36,10 @@ export function startWorkers() {
         if (!job.opts.attempts || job.attemptsMade >= job.opts.attempts) {
           try {
             const { sql } = await import('../db/client.js');
+            const errorMsg = err?.message || String(err) || 'Unknown error';
             await sql`
               UPDATE agent_runs 
-              SET status = 'failed', error_message = ${err.message}, completed_at = NOW() 
+              SET status = 'failed', error_message = ${errorMsg}, completed_at = NOW() 
               WHERE id = ${job.data.agentRunId}
             `;
           } catch (dbErr) {

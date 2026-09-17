@@ -69,12 +69,22 @@ export class AgentRunTracker {
       WHERE id = ${stepId}
     `;
 
-    await sql`
-      UPDATE agent_runs
-      SET last_activity_at = NOW(),
-          last_heartbeat_at = NOW()
-      WHERE id = ${this.runId}
-    `;
+    if (!retryable) {
+      await sql`
+        UPDATE agent_runs
+        SET status = 'failed',
+            error_message = ${errorMsg},
+            completed_at = NOW()
+        WHERE id = ${this.runId}
+      `;
+    } else {
+      await sql`
+        UPDATE agent_runs
+        SET last_activity_at = NOW(),
+            last_heartbeat_at = NOW()
+        WHERE id = ${this.runId}
+      `;
+    }
 
     await this.logEvent(stepId, `STEP_FAILED`, retryable ? 'warn' : 'error', `Step failed: ${errorMsg}`);
   }

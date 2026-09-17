@@ -39,7 +39,7 @@ export const createContentWorker = () => {
             const delay = job.opts.backoff ? 5000 * Math.pow(2, job.attemptsMade + 1) : 5000;
             nextRetryAt = new Date(Date.now() + delay);
         }
-        await tracker.failStep(stepId, actualError.message, isRetryable, nextRetryAt);
+        await tracker.failStep(stepId, actualError.message, isRetryable && !!nextRetryAt, nextRetryAt);
       }
       
       throw actualError;
