@@ -1,6 +1,5 @@
 'use client';
 
-import { use } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, CheckCircle2, XCircle, RefreshCw, Clock, PlayCircle } from 'lucide-react';
 import { useAgentRun } from '@/lib/hooks/use-agent-run';
@@ -25,11 +24,11 @@ function durationStr(startedAt: string, completedAt: string | null) {
 }
 
 interface PageProps {
-  params: Promise<{ id: string }>;
+  params: { id: string };
 }
 
 export default function RunDetailPage({ params }: PageProps) {
-  const { id: runId } = use(params);
+  const { id: runId } = params;
   const { runDetail, isLoading } = useAgentRun(runId);
   const { events, connectionState } = useAgentEvents(runId);
 
