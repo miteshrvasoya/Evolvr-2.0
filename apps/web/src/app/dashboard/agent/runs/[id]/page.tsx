@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowLeft, CheckCircle2, XCircle, RefreshCw, Clock, PlayCircle } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, XCircle, RefreshCw, Clock, PlayCircle, AlertTriangle } from 'lucide-react';
 import { useAgentRun } from '@/lib/hooks/use-agent-run';
 import { useAgentEvents } from '@/lib/hooks/use-agent-events';
 import { WorkflowPipeline } from '@/components/dashboard/workflow-pipeline';
@@ -141,6 +141,67 @@ export default function RunDetailPage({ params }: PageProps) {
           </Card>
         </div>
       </div>
+      {/* Generated Prompts (Failed Media) */}
+      <RunPromptsSection runId={run.id} />
+
     </div>
+  );
+}
+
+// ── Additional Section Component ──────────────────────────────────────────────
+
+import { useUngeneratedPrompts } from '@/lib/hooks/use-ungenerated-prompts';
+
+function RunPromptsSection({ runId }: { runId: string }) {
+  const { groups, isLoading } = useUngeneratedPrompts();
+  
+  if (isLoading) return null;
+  
+  const group = groups.find((g: any) => g.run.id === runId);
+  if (!group || group.ideas.length === 0) return null;
+
+  return (
+    <Card className="border-orange-200 shadow-sm mt-6">
+      <CardHeader className="bg-orange-50/50 pb-4">
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="h-5 w-5 text-orange-500" />
+          <CardTitle className="text-lg">Failed Media Generations</CardTitle>
+        </div>
+        <p className="text-sm text-muted-foreground mt-1">
+          The agent successfully generated these prompts, but media generation failed. You can use these prompts to manually create the content.
+        </p>
+      </CardHeader>
+      <CardContent className="p-0 divide-y">
+        {group.ideas.map((idea: any) => (
+          <div key={idea.id} className="p-4 sm:p-6 space-y-4">
+            <div className="flex justify-between items-start gap-4">
+              <div>
+                <h4 className="font-semibold">{idea.concept}</h4>
+                <p className="text-sm text-muted-foreground line-clamp-2 mt-1">{idea.caption}</p>
+              </div>
+              <span className="shrink-0 inline-flex items-center rounded-md bg-orange-50 px-2 py-1 text-xs font-medium text-orange-700 ring-1 ring-inset ring-orange-600/20">
+                {idea.lastFailure?.errorCategory?.replace(/_/g, ' ') || 'Generation Failed'}
+              </span>
+            </div>
+            
+            {idea.prompts?.length > 0 && (
+              <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    {idea.prompts[0].assetType.replace(/_/g, ' ')} Prompt
+                  </span>
+                  <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => navigator.clipboard.writeText(idea.prompts[0].promptText)}>
+                    Copy Prompt
+                  </Button>
+                </div>
+                <p className="text-sm font-mono text-slate-700 whitespace-pre-wrap">
+                  {idea.prompts[0].promptText}
+                </p>
+              </div>
+            )}
+          </div>
+        ))}
+      </CardContent>
+    </Card>
   );
 }

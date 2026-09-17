@@ -76,7 +76,7 @@ export class StrategyAgent {
           experiment_plan, rationale, evidence_ids, confidence, status
         ) VALUES (
           ${socialAccountId}, ${nextVersion}, ${JSON.stringify({ primaryMetric: goal.primaryMetric, target: goal.target })},
-          ${strategyData.contentMix}, ${strategyData.cadence}, ${strategyData.experimentPlan},
+          ${JSON.stringify(strategyData.contentMix)}, ${JSON.stringify(strategyData.cadence)}, ${JSON.stringify(strategyData.experimentPlan)},
           ${strategyData.rationale}, ${strategyData.evidenceIds}, ${strategyData.confidence}, 'active'
         ) RETURNING id
       `;

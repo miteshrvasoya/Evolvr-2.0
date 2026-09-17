@@ -147,7 +147,7 @@ export default async function agentRoutes(app: FastifyInstance) {
     reply.header('X-Accel-Buffering', 'no');
     
     // Use getHeaders() so CORS headers added by @fastify/cors are preserved
-    reply.raw.writeHead(200, reply.getHeaders());
+    reply.raw.writeHead(200, reply.getHeaders() as any);
 
     const send = (event: string, data: unknown) => {
       reply.raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
@@ -157,7 +157,7 @@ export default async function agentRoutes(app: FastifyInstance) {
     let afterCreatedAt: Date | null = null;
     if (lastEventId) {
       const pivot = await sql`SELECT created_at FROM agent_events WHERE id = ${lastEventId}`;
-      if (pivot.length) afterCreatedAt = new Date(pivot[0].createdAt as string);
+      if (pivot.length > 0 && pivot[0]) afterCreatedAt = new Date(pivot[0].createdAt as string);
     }
 
     // Poll DB every 2 seconds and stream new events

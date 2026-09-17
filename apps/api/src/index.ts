@@ -68,7 +68,8 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   apiLoggerMiddleware.default(app);
 
-  app.setErrorHandler((error, request, reply) => {
+  app.setErrorHandler((err, request, reply) => {
+    const error = err as any;
     app.log.error(error);
     const user = (request as any).user;
     LoggerService.logError({
