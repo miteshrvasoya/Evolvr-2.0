@@ -231,7 +231,7 @@ export default async function dashboardRoutes(app: FastifyInstance) {
     const accountId = await getPrimaryAccount(userId);
 
     if (!accountId) {
-      return { success: true, data: { state: 'IDLE', recentDecisions: [], scheduledJobs: [], recentErrors: [], recentApiLogs: [], currentStep: null, nextAction: null, upcomingActions: [] } };
+      return { success: true, data: { accountId, state: 'IDLE', recentDecisions: [], scheduledJobs: [], recentErrors: [], recentApiLogs: [], currentStep: null, nextAction: null, upcomingActions: [] } };
     }
 
     // Get most recent run (not just last 1 — also check currently running)
@@ -390,6 +390,7 @@ export default async function dashboardRoutes(app: FastifyInstance) {
     return {
       success: true,
       data: {
+        accountId,
         state,
         currentRun: activeRun,
         currentStep,

@@ -42,7 +42,7 @@ export default async function agentRoutes(app: FastifyInstance) {
       LIMIT 50
     `;
 
-    return { decisions };
+    return { success: true, data: { decisions } };
   });
 
   // Get Agent Runs for an account
@@ -51,9 +51,9 @@ export default async function agentRoutes(app: FastifyInstance) {
     const runs = await sql`
       SELECT * FROM agent_runs 
       WHERE social_account_id = ${accountId}
-      ORDER BY created_at DESC LIMIT 20
+      ORDER BY started_at DESC LIMIT 20
     `;
-    return { runs };
+    return { success: true, data: { runs } };
   });
 
   // Get specific Agent Run
@@ -61,7 +61,7 @@ export default async function agentRoutes(app: FastifyInstance) {
     const { id } = request.params;
     const run = await sql`SELECT * FROM agent_runs WHERE id = ${id}`;
     if (!run.length) return reply.status(404).send({ error: 'Run not found' });
-    return { run: run[0] };
+    return { success: true, data: { run: run[0] } };
   });
 
   // Get Steps for a run
@@ -72,7 +72,7 @@ export default async function agentRoutes(app: FastifyInstance) {
       WHERE agent_run_id = ${id}
       ORDER BY created_at ASC
     `;
-    return { steps };
+    return { success: true, data: { steps } };
   });
 
   // Get Events for a run (Activity Log)
@@ -84,7 +84,7 @@ export default async function agentRoutes(app: FastifyInstance) {
       ORDER BY created_at DESC
       LIMIT 100
     `;
-    return { events };
+    return { success: true, data: { events } };
   });
 
   // Manual Retry for a step

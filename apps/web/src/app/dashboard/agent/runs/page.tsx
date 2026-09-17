@@ -54,7 +54,7 @@ function groupByDate(runs: AgentRun[]): { label: string; runs: AgentRun[] }[] {
 export default function AgentRunsPage() {
   // The account-level runs endpoint requires accountId — use agent/status to get it
   const { data, isLoading } = useSWR('/api/agent/status', (p) => apiClient.get<any>(p));
-  const accountId = data?.currentRun?.socialAccountId ?? null;
+  const accountId = data?.accountId ?? null;
 
   const { data: runsData, isLoading: runsLoading } = useSWR(
     accountId ? `/api/accounts/${accountId}/agent/runs` : null,
