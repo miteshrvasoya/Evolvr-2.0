@@ -1,198 +1,302 @@
 'use client';
 
-import { useState } from 'react';
-import { useContentCalendar } from '@/lib/hooks/use-content-calendar';
-import { useContentDrafts } from '@/lib/hooks/use-content-drafts';
-import { PostStatusBadge } from '@/components/dashboard/post-status-badge';
-import { ContentIdeaCard } from '@/components/dashboard/content-idea-card';
-import { ManageDraftDialog } from '@/components/dashboard/manage-draft-dialog';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import Link from 'next/link';
+import { useContentLibrary, type ContentListItem } from '@/lib/hooks/use-content-library';
+import { NeedsAttentionBanner } from '@/components/dashboard/needs-attention-banner';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import { formatDateTime } from '@/lib/utils';
-import { toast } from '@/lib/hooks/use-toast';
-import type { Post, ContentIdea } from '@evolvr/types';
+import {
+  CheckCircle2, XCircle, Clock, AlertTriangle, Search, Filter, ArrowRight,
+  ImagePlus, Eye, ChevronDown, RefreshCw
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { formatDistanceToNow } from 'date-fns';
 
-function PostRow({ post, idea, onApprove, onReject }: {
-  post: Post;
-  idea?: ContentIdea;
-  onApprove?: () => void;
-  onReject?: () => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
+function useDebounce<T>(value: T, delay: number): [T] {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(id);
+  }, [value, delay]);
+  return [debounced];
+}
+
+// ── Status config ──────────────────────────────────────────────────────────────
+
+const STATUS_TABS = [
+  { key: '',                label: 'All'             },
+  { key: 'needs_attention', label: 'Needs Attention', assetStatus: 'failed' },
+  { key: 'draft',           label: 'Draft'           },
+  { key: 'waiting_approval',label: 'Awaiting Review' },
+  { key: 'ready',           label: 'Ready'           },
+  { key: 'blocked',         label: 'Blocked'         },
+];
+
+const FORMAT_LABELS: Record<string, string> = {
+  reel: 'Reel', carousel: 'Carousel', static_post: 'Post', story: 'Story',
+};
+
+const CONTENT_STATUS_BADGE: Record<string, { label: string; variant: 'success' | 'destructive' | 'secondary' | 'outline' }> = {
+  draft:            { label: 'Draft',           variant: 'secondary'   },
+  waiting_approval: { label: 'Awaiting Review', variant: 'outline'     },
+  ready:            { label: 'Ready',           variant: 'success'     },
+  blocked:          { label: 'Blocked',         variant: 'destructive' },
+};
+
+// ── Asset Status Indicator ─────────────────────────────────────────────────────
+
+function AssetStatusBadge({ item }: { item: ContentListItem }) {
+  const { assetGenerationStatus, primaryAsset } = item;
+
+  if (primaryAsset?.generationStatus === 'generated') {
+    return (
+      <span className="flex items-center gap-1 text-xs text-emerald-600">
+        <CheckCircle2 className="h-3 w-3" /> Image Ready
+      </span>
+    );
+  }
+  if (primaryAsset?.generationStatus === 'manually_added') {
+    return (
+      <span className="flex items-center gap-1 text-xs text-blue-600">
+        <CheckCircle2 className="h-3 w-3" /> Manually Added
+      </span>
+    );
+  }
+  if (assetGenerationStatus === 'needs_attention') {
+    return (
+      <span className="flex items-center gap-1 text-xs text-orange-500 font-medium">
+        <AlertTriangle className="h-3 w-3" /> Generation Failed
+      </span>
+    );
+  }
+  if (['pending', 'generating'].includes(assetGenerationStatus)) {
+    return (
+      <span className="flex items-center gap-1 text-xs text-amber-500">
+        <Clock className="h-3 w-3 animate-spin" /> Generating…
+      </span>
+    );
+  }
+  return (
+    <span className="flex items-center gap-1 text-xs text-muted-foreground">
+      <ImagePlus className="h-3 w-3" /> No media
+    </span>
+  );
+}
+
+// ── Content Card ──────────────────────────────────────────────────────────────
+
+function ContentCard({ item }: { item: ContentListItem }) {
+  const statusBadge = CONTENT_STATUS_BADGE[item.status] || { label: item.status, variant: 'secondary' as const };
+  const hasImage = !!item.primaryAsset?.storageUrl;
 
   return (
-    <div className="border-b last:border-0">
-      <button
-        onClick={() => setExpanded((v) => !v)}
-        className="w-full flex items-start justify-between gap-3 py-3 text-left hover:bg-accent/30 px-2 rounded transition-colors"
-      >
-        <div className="flex items-start gap-3 min-w-0">
-          <Badge variant="outline" className="shrink-0 capitalize">{post.mediaType}</Badge>
-          <div className="min-w-0">
-            <p className="text-sm line-clamp-2">{post.caption}</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              {formatDateTime(post.scheduledAt)}
-              {post.failureReason && ` · Error: ${post.failureReason}`}
-            </p>
-          </div>
-        </div>
-        <PostStatusBadge status={post.status} />
-      </button>
-
-      {expanded && idea && (
-        <div className="px-2 pb-3">
-          <ContentIdeaCard
-            idea={idea}
-            onApprove={onApprove}
-            onReject={onReject}
-            showActions={post.status === 'waiting_approval'}
-          />
-        </div>
+    <Link
+      href={`/dashboard/content/${item.id}`}
+      className={cn(
+        'group flex flex-col rounded-xl border bg-card overflow-hidden transition-all',
+        'hover:shadow-md hover:border-primary/30',
+        item.needsAttention && 'border-orange-200 dark:border-orange-800',
       )}
+    >
+      {/* Image thumbnail */}
+      <div className={cn(
+        'aspect-video bg-muted relative flex items-center justify-center',
+        !hasImage && 'bg-gradient-to-br from-muted to-muted/60',
+      )}>
+        {hasImage ? (
+          <img
+            src={item.primaryAsset!.storageUrl}
+            alt={item.concept}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <ImagePlus className="h-8 w-8 text-muted-foreground/20" />
+        )}
+
+        {/* Needs attention overlay */}
+        {item.needsAttention && (
+          <div className="absolute inset-0 bg-orange-500/10 flex items-end">
+            <div className="w-full px-2 py-1 bg-orange-500/90 text-white text-[10px] font-semibold truncate">
+              ⚠ Generation Failed — Action Required
+            </div>
+          </div>
+        )}
+
+        {/* Format badge */}
+        <div className="absolute top-2 left-2">
+          <Badge variant="secondary" className="text-[10px] bg-black/60 text-white border-0 backdrop-blur-sm">
+            {FORMAT_LABELS[item.format] || item.format}
+          </Badge>
+        </div>
+      </div>
+
+      {/* Content info */}
+      <div className="p-3 space-y-2 flex-1 flex flex-col">
+        <p className="text-sm font-semibold line-clamp-2 leading-snug group-hover:text-primary transition-colors">
+          {item.hook || item.concept}
+        </p>
+
+        {item.caption && (
+          <p className="text-xs text-muted-foreground line-clamp-2">{item.caption}</p>
+        )}
+
+        <div className="flex items-center justify-between gap-2 mt-auto pt-1">
+          <AssetStatusBadge item={item} />
+          <Badge variant={statusBadge.variant} className="text-[10px] capitalize">
+            {statusBadge.label}
+          </Badge>
+        </div>
+
+        <div className="flex items-center justify-between text-[10px] text-muted-foreground/60">
+          <span className="capitalize">{item.pillar?.replace(/_/g, ' ')}</span>
+          <span>{formatDistanceToNow(new Date(item.createdAt), { addSuffix: true })}</span>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+// ── Empty State ────────────────────────────────────────────────────────────────
+
+function EmptyState({ activeTab }: { activeTab: string }) {
+  if (activeTab === 'needs_attention') {
+    return (
+      <div className="col-span-full py-16 flex flex-col items-center gap-3 text-center">
+        <CheckCircle2 className="h-10 w-10 text-emerald-400/40" />
+        <p className="text-sm font-medium text-muted-foreground">All generated assets are healthy</p>
+        <p className="text-xs text-muted-foreground/60">No content needs your attention right now.</p>
+      </div>
+    );
+  }
+  return (
+    <div className="col-span-full py-16 flex flex-col items-center gap-3 text-center">
+      <ImagePlus className="h-10 w-10 text-muted-foreground/20" />
+      <p className="text-sm font-medium text-muted-foreground">No content yet</p>
+      <p className="text-xs text-muted-foreground/60">
+        Trigger the agent to generate content from your active strategy.
+      </p>
     </div>
   );
 }
 
+// ── Main Page ─────────────────────────────────────────────────────────────────
+
 export default function ContentPage() {
-  const { data, isLoading, approvePost, rejectPost } = useContentCalendar();
-  const { data: draftsData, isLoading: draftsLoading, approveIdea, updateIdea, uploadAsset } = useContentDrafts();
+  const [activeTab, setActiveTab] = useState('');
+  const [rawSearch, setRawSearch] = useState('');
+  const [search] = useDebounce(rawSearch, 400);
+  const [page, setPage] = useState(1);
 
-  if (isLoading || draftsLoading) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-10 w-80" />
-        {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-16" />)}
-      </div>
-    );
+  const isNeedsAttention = activeTab === 'needs_attention';
+
+  const { items, total, isLoading, refresh } = useContentLibrary({
+    status: isNeedsAttention ? undefined : (activeTab || undefined),
+    assetStatus: isNeedsAttention ? 'failed' : undefined,
+    search: search || undefined,
+    page,
+    limit: 18,
+  });
+
+  const totalPages = Math.ceil(total / 18);
+
+  function handleTabChange(key: string) {
+    setActiveTab(key);
+    setPage(1);
   }
-
-  if (!data) return null;
-
-  async function handleApprove(postId: string) {
-    try {
-      await approvePost(postId);
-      toast({ title: 'Post approved', description: 'The post has been approved for publishing.' });
-    } catch {
-      toast({ variant: 'destructive', title: 'Error', description: 'Could not approve post.' });
-    }
-  }
-
-  async function handleReject(postId: string) {
-    try {
-      await rejectPost(postId, 'Rejected by admin');
-      toast({ title: 'Post rejected', description: 'The post has been rejected.' });
-    } catch {
-      toast({ variant: 'destructive', title: 'Error', description: 'Could not reject post.' });
-    }
-  }
-
-  const tabs = [
-    { key: 'scheduled', label: 'Scheduled', posts: data.scheduled },
-    { key: 'awaiting', label: 'Awaiting Review', posts: data.awaitingReview },
-    { key: 'published', label: 'Published', posts: data.published },
-    { key: 'failed', label: 'Failed', posts: data.failed },
-  ] as const;
-
-  const drafts = draftsData || [];
 
   return (
     <div className="space-y-6">
-      <Tabs defaultValue="drafts">
-        <TabsList>
-          <TabsTrigger value="drafts">
-            Draft Ideas
-            {drafts.length > 0 && (
-              <span className="ml-1.5 rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold">
-                {drafts.length}
-              </span>
+      {/* Page header */}
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold">Content Library</h1>
+          <p className="text-sm text-muted-foreground">
+            {total > 0 ? `${total} content item${total !== 1 ? 's' : ''}` : 'Manage your generated content'}
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => refresh()} className="gap-1.5">
+          <RefreshCw className="h-3.5 w-3.5" />
+          Refresh
+        </Button>
+      </div>
+
+      {/* Needs Attention banner */}
+      <NeedsAttentionBanner />
+
+      {/* Filter tabs */}
+      <div className="flex gap-1.5 flex-wrap border-b pb-3">
+        {STATUS_TABS.map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => handleTabChange(tab.key)}
+            className={cn(
+              'px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors',
+              activeTab === tab.key
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'border-border text-muted-foreground hover:border-primary/40 hover:text-foreground',
+              tab.key === 'needs_attention' && activeTab !== tab.key && 'border-orange-300 text-orange-500 hover:border-orange-400',
             )}
-          </TabsTrigger>
-          {tabs.map((tab) => (
-            <TabsTrigger key={tab.key} value={tab.key}>
-              {tab.label}
-              {tab.posts.length > 0 && (
-                <span className="ml-1.5 rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold">
-                  {tab.posts.length}
-                </span>
-              )}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-
-        <TabsContent value="drafts">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Generated Draft Ideas</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {drafts.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-4 text-center">
-                  No drafts available. Trigger the agent to generate some!
-                </p>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {drafts.map((draft: any) => (
-                    <Card key={draft.id} className="overflow-hidden">
-                      {draft.assets && draft.assets.length > 0 && (
-                        <div className="aspect-square bg-muted relative">
-                          <img 
-                            src={draft.assets[0].storage_url} 
-                            alt={draft.concept}
-                            className="object-cover w-full h-full"
-                          />
-                        </div>
-                      )}
-                      <ManageDraftDialog 
-                        draft={draft}
-                        onApprove={(scheduledAt) => approveIdea(draft.id, scheduledAt)}
-                        onUpdate={(data) => updateIdea(draft.id, data)}
-                        onUpload={(file) => uploadAsset(draft.id, file)}
-                      >
-                        <CardContent className="p-4 space-y-3 cursor-pointer hover:bg-accent/50 transition-colors">
-                          <Badge variant="outline" className="capitalize">{draft.format}</Badge>
-                          <p className="font-medium text-sm line-clamp-2">{draft.hook}</p>
-                          <p className="text-xs text-muted-foreground line-clamp-3">{draft.caption}</p>
-                        </CardContent>
-                      </ManageDraftDialog>
-                    </Card>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {tabs.map((tab) => (
-          <TabsContent key={tab.key} value={tab.key}>
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">{tab.label} Posts</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {tab.posts.length === 0 ? (
-                  <p className="text-sm text-muted-foreground py-4 text-center">
-                    No {tab.label.toLowerCase()} posts
-                  </p>
-                ) : (
-                  <div>
-                    {tab.posts.map((post) => (
-                      <PostRow
-                        key={post.id}
-                        post={post}
-                        idea={data.ideas[post.contentIdeaId]}
-                        onApprove={() => handleApprove(post.id)}
-                        onReject={() => handleReject(post.id)}
-                      />
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
+          >
+            {tab.label}
+          </button>
         ))}
-      </Tabs>
+      </div>
+
+      {/* Search */}
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+        <Input
+          placeholder="Search by hook, caption, concept…"
+          value={rawSearch}
+          onChange={e => { setRawSearch(e.target.value); setPage(1); }}
+          className="pl-9 h-9 text-sm"
+        />
+      </div>
+
+      {/* Grid */}
+      {isLoading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-64 rounded-xl" />
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+          {items.length === 0 ? (
+            <EmptyState activeTab={activeTab} />
+          ) : (
+            items.map(item => <ContentCard key={item.id} item={item} />)
+          )}
+        </div>
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2 pt-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page <= 1}
+            onClick={() => setPage(p => Math.max(1, p - 1))}
+          >
+            Previous
+          </Button>
+          <span className="text-sm text-muted-foreground">
+            Page {page} of {totalPages}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page >= totalPages}
+            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+          >
+            Next
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

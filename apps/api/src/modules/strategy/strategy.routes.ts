@@ -9,6 +9,26 @@ export default async function strategyRoutes(app: FastifyInstance) {
     return accounts[0]?.id;
   }
 
+  // Get content ideas generated from a specific strategy version
+  app.get('/strategy/versions/:id/content', async (request: any, reply) => {
+    const { id: versionId } = request.params as any;
+    const { id: userId } = request.user;
+    const accountId = await getPrimaryAccount(userId);
+
+    const ideas = await sql`
+      SELECT ci.id, ci.concept, ci.hook, ci.format, ci.pillar, ci.status,
+             ci.asset_generation_status, ci.needs_attention, ci.created_at,
+             (SELECT ca.storage_url FROM content_assets ca WHERE ca.content_idea_id = ci.id
+              ORDER BY ca.created_at DESC LIMIT 1) AS primary_asset_url
+      FROM content_ideas ci
+      WHERE ci.strategy_version_id = ${versionId}
+        AND ci.social_account_id = ${accountId}
+      ORDER BY ci.created_at DESC
+    `;
+
+    return { success: true, data: ideas };
+  });
+
   app.get('/strategy', async (request: any, reply) => {
     const { id: userId } = request.user;
     const accountId = await getPrimaryAccount(userId);

@@ -12,6 +12,7 @@ export const queues = {
   research: new Queue('research', { connection: redisConnection }),
   strategy: new Queue('strategy', { connection: redisConnection }),
   contentGeneration: new Queue('content-generation', { connection: redisConnection }),
+  /** Dedicated queue for asset generation jobs (image/video). Uses its own worker with backoff. */
   mediaGeneration: new Queue('media-generation', { connection: redisConnection }),
   qualityCheck: new Queue('quality-check', { connection: redisConnection }),
   publishing: new Queue('publishing', { connection: redisConnection }),
