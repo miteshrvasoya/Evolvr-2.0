@@ -25,7 +25,29 @@ export function startWorkers() {
   workers.push(createMediaWorker());
 
   // Add more workers (content-generation, analytics, etc) here as needed...
-
+  
+  // Central failure handler for all workers
+  workers.forEach(worker => {
+    worker.on('failed', async (job, err) => {
+      console.error(`[Worker ${worker.name}] Job ${job?.id} failed:`, err.message);
+      
+      if (job && job.data && job.data.agentRunId) {
+        // If this is the final attempt
+        if (!job.opts.attempts || job.attemptsMade >= job.opts.attempts) {
+          try {
+            const { sql } = await import('../db/client.js');
+            await sql`
+              UPDATE agent_runs 
+              SET status = 'failed', error_message = ${err.message}, completed_at = NOW() 
+              WHERE id = ${job.data.agentRunId}
+            `;
+          } catch (dbErr) {
+            console.error('[Worker Failed Handler] DB Update Error:', dbErr);
+          }
+        }
+      }
+    });
+  });
 
 }
 

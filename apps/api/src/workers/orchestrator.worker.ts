@@ -149,11 +149,6 @@ export const createOrchestratorWorker = () => {
     limiter: { max: 10, duration: 1000 }
   });
 
-  worker.on('failed', async (job, err) => {
-    if (job && (!job.opts.attempts || job.attemptsMade >= job.opts.attempts)) {
-      await sql`UPDATE agent_runs SET status = 'failed', error_message = ${err.message}, completed_at = NOW() WHERE id = ${job.data.agentRunId}`;
-    }
-  });
 
   return worker;
 };

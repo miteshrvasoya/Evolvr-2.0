@@ -123,11 +123,6 @@ export const createMediaWorker = () => {
     }
   );
 
-  worker.on('failed', (job, err) => {
-    if (job) {
-      console.error(`[MediaWorker] Job ${job.id} threw an unhandled exception:`, err.message);
-    }
-  });
 
   return worker;
 };
