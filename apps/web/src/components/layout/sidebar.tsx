@@ -6,34 +6,44 @@ import {
   BarChart3,
   Bot,
   Calendar,
-  FlaskConical,
-  History,
+  AlertTriangle,
+  Library,
   LayoutDashboard,
   Search,
   Settings,
   Target,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useNeedsAttentionCount } from '@/lib/hooks/use-needs-attention';
 
 const navItems = [
   { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
   {
     label: 'Agent Status',
     icon: Bot,
-    href: '/dashboard/agent', // Base route
+    href: '/dashboard/agent',
     subItems: [
       { href: '/dashboard/agent', label: 'Live Status' },
       { href: '/dashboard/agent/runs', label: 'Run History' },
     ],
   },
-  { href: '/dashboard/content', label: 'Content Calendar', icon: Calendar },
+  {
+    label: 'Content',
+    icon: Calendar,
+    href: '/dashboard/content',
+    subItems: [
+      { href: '/dashboard/content', label: 'Library' },
+      { href: '/dashboard/content?filter=needs_attention', label: 'Needs Attention', alertKey: 'needsAttention' },
+      { href: '/dashboard/content/prompts', label: 'Ungenerated Prompts' },
+    ],
+  },
   { href: '/dashboard/strategy', label: 'Strategy', icon: Target },
   { href: '/dashboard/analytics', label: 'Analytics', icon: BarChart3 },
   { href: '/dashboard/research', label: 'Research', icon: Search },
   { href: '/dashboard/settings', label: 'Settings', icon: Settings },
 ];
 
-function NavItem({ item, pathname }: { item: any; pathname: string }) {
+function NavItem({ item, pathname, needsAttentionCount }: { item: any; pathname: string; needsAttentionCount: number }) {
   const Icon = item.icon;
   const isActive = item.href === '/dashboard' ? pathname === '/dashboard' : pathname.startsWith(item.href);
 
@@ -51,19 +61,25 @@ function NavItem({ item, pathname }: { item: any; pathname: string }) {
         </div>
         <ul className="pl-6 pr-2 space-y-1">
           {item.subItems.map((sub: any) => {
-            const isSubActive = pathname === sub.href;
+            const isSubActive = pathname === sub.href || (pathname + (typeof window !== 'undefined' ? window.location.search : '')) === sub.href;
+            const count = sub.alertKey === 'needsAttention' ? needsAttentionCount : 0;
             return (
               <li key={sub.href}>
                 <Link
                   href={sub.href}
                   className={cn(
-                    'block rounded-md px-3 py-1.5 text-sm transition-colors',
+                    'flex items-center justify-between gap-2 rounded-md px-3 py-1.5 text-sm transition-colors',
                     isSubActive
                       ? 'bg-primary text-primary-foreground font-medium'
                       : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
                   )}
                 >
-                  {sub.label}
+                  <span>{sub.label}</span>
+                  {count > 0 && (
+                    <span className="inline-flex items-center justify-center h-4 min-w-[16px] px-1 rounded-full bg-orange-500 text-white text-[9px] font-bold leading-none">
+                      {count > 99 ? '99+' : count}
+                    </span>
+                  )}
                 </Link>
               </li>
             );
@@ -93,6 +109,7 @@ function NavItem({ item, pathname }: { item: any; pathname: string }) {
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { count: needsAttentionCount } = useNeedsAttentionCount();
 
   return (
     <aside className="flex h-full w-64 flex-col border-r bg-card">
@@ -111,7 +128,7 @@ export function Sidebar() {
       <nav className="flex-1 overflow-y-auto px-3 py-4">
         <ul className="space-y-1">
           {navItems.map((item, idx) => (
-            <NavItem key={idx} item={item} pathname={pathname} />
+            <NavItem key={idx} item={item} pathname={pathname} needsAttentionCount={needsAttentionCount} />
           ))}
         </ul>
       </nav>

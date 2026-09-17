@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useContentLibrary, type ContentListItem } from '@/lib/hooks/use-content-library';
 import { NeedsAttentionBanner } from '@/components/dashboard/needs-attention-banner';
@@ -185,7 +186,9 @@ function EmptyState({ activeTab }: { activeTab: string }) {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function ContentPage() {
-  const [activeTab, setActiveTab] = useState('');
+  const searchParams = useSearchParams();
+  const initialFilter = searchParams.get('filter') === 'needs_attention' ? 'needs_attention' : '';
+  const [activeTab, setActiveTab] = useState(initialFilter);
   const [rawSearch, setRawSearch] = useState('');
   const [search] = useDebounce(rawSearch, 400);
   const [page, setPage] = useState(1);
