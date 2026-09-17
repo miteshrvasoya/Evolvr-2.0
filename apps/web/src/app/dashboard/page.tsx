@@ -18,12 +18,11 @@ import { useDashboard } from '@/lib/hooks/use-dashboard';
 import { useAgentStatus } from '@/lib/hooks/use-agent-status';
 import { MetricCard } from '@/components/dashboard/metric-card';
 import { GoalProgress } from '@/components/dashboard/goal-progress';
-import { FollowerAreaChart } from '@/components/dashboard/follower-area-chart';
+import { DetailedMetrics } from '@/components/dashboard/detailed-metrics';
 import { AgentStateBadge } from '@/components/dashboard/agent-state-badge';
 import { AgentSummaryWidget } from '@/components/dashboard/agent-summary-widget';
 import { UpcomingPostsList } from '@/components/dashboard/upcoming-posts-list';
 import { RecentDecisionsFeed } from '@/components/dashboard/recent-decisions-feed';
-import { InsightsGrid } from '@/components/dashboard/insights-grid';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
@@ -201,42 +200,11 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* ── Engagement Breakdown ──────────────────────────────────────────────── */}
-      <InsightsGrid metrics={accountMetrics} />
+      {/* ── Detailed Metrics & Charts ─────────────────────────────────────────── */}
+      <DetailedMetrics history={metricsHistory} />
 
-      {/* ── Chart + Goal ─────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        {/* Area Chart — 2/3 width */}
-        <Card className="lg:col-span-2">
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-sm font-semibold">Follower & Reach Growth</CardTitle>
-                <CardDescription className="text-xs mt-0.5">Last 7 data points</CardDescription>
-              </div>
-              <Button variant="ghost" size="sm" className="text-xs h-7" asChild>
-                <Link href="/dashboard/analytics">
-                  Full Analytics <ArrowRight className="ml-1 h-3 w-3" />
-                </Link>
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="pb-4">
-            {metricsHistory.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-64 text-center">
-                <TrendingUp className="h-8 w-8 text-muted-foreground/20 mb-3" />
-                <p className="text-sm text-muted-foreground">No historical data yet</p>
-                <p className="text-xs text-muted-foreground/60 mt-1">
-                  Sync your Instagram account to start tracking.
-                </p>
-              </div>
-            ) : (
-              <FollowerAreaChart data={metricsHistory} />
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Goal Progress — 1/3 width */}
+      {/* ── Goal ─────────────────────────────────────────────────────── */}
+      <div>
         {goal ? (
           <GoalProgress goal={goal} metrics={accountMetrics} />
         ) : (

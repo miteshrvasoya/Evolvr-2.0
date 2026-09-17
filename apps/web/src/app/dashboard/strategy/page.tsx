@@ -80,7 +80,7 @@ export default function StrategyPage() {
                 <div className="mt-4">
                   <h4 className="text-sm font-semibold mb-2">Objective</h4>
                   <p className="text-sm text-muted-foreground capitalize">
-                    {active.objective.primaryMetric.replace(/_/g, ' ')}
+                    {active.objective?.primaryMetric?.replace(/_/g, ' ') ?? 'None'}
                     {active.objective.targetGrowthRate
                       ? ` · Target growth: ${formatPercent(active.objective.targetGrowthRate)}`
                       : ''}

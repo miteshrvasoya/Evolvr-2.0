@@ -198,13 +198,13 @@ export default async function dashboardRoutes(app: FastifyInstance) {
     // Fetch metric history for chart — latest 7 snapshots, re-sorted ASC for the chart
     // (ORDER BY ASC LIMIT 7 would return the oldest 7, missing recent data)
     const metricsHistory = await sql`
-      SELECT followers, reach, impressions, profile_visits, captured_at
+      SELECT *
       FROM (
-        SELECT followers, reach, impressions, profile_visits, captured_at
+        SELECT *
         FROM account_metrics
         WHERE social_account_id = ${accountId}
         ORDER BY captured_at DESC
-        LIMIT 7
+        LIMIT 90
       ) AS recent
       ORDER BY captured_at ASC
     `;
