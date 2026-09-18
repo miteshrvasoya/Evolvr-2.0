@@ -312,7 +312,7 @@ export default async function scheduleRoutes(app: FastifyInstance) {
     if (!posts.length) return reply.status(404).send({ error: 'Schedule not found' });
 
     const validation = await schedulingService.validateForScheduling(
-      posts[0]?.contentIdeaId as string, accountId, newDate
+      posts[0]?.contentIdeaId as string, accountId, newDate, postId
     );
     // Allow existing schedule conflict with itself — so filter out the current post
     const filteredErrors = validation.errors.filter(e => !e.includes('already has an active schedule'));
@@ -344,6 +344,18 @@ export default async function scheduleRoutes(app: FastifyInstance) {
 
     const newDate = new Date(scheduledAt);
     if (isNaN(newDate.getTime())) return reply.status(400).send({ error: 'Invalid date' });
+
+    // Validate new time
+    const posts = await sql`SELECT content_idea_id FROM posts WHERE id = ${postId} AND social_account_id = ${accountId}`;
+    if (!posts.length) return reply.status(404).send({ error: 'Schedule not found' });
+
+    const validation = await schedulingService.validateForScheduling(
+      posts[0]?.contentIdeaId as string, accountId, newDate, postId
+    );
+    const filteredErrors = validation.errors.filter(e => !e.includes('already has an active schedule'));
+    if (filteredErrors.length > 0) {
+      return reply.status(422).send({ error: 'Validation failed', details: filteredErrors });
+    }
 
     await schedulingService.reschedule({
       postId,

@@ -60,7 +60,7 @@ export function ScheduleModal({
   const [viewDate, setViewDate] = useState<DateTime>(defaultDt);
   const [selectedDate, setSelectedDate] = useState<DateTime | null>(defaultDt);
   const [hour, setHour]   = useState(defaultDt.hour);
-  const [minute, setMinute] = useState(Math.ceil(defaultDt.minute / 15) * 15 % 60);
+  const [minute, setMinute] = useState(defaultDt.minute);
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -117,7 +117,7 @@ export function ScheduleModal({
   const weeks = buildCalendar();
   const today = DateTime.now().startOf('day');
 
-  const minuteOptions = [0, 15, 30, 45];
+  const minuteOptions = Array.from({ length: 60 }, (_, i) => i);
   const hourOptions = Array.from({ length: 24 }, (_, i) => i);
 
   if (!isOpen) return null;

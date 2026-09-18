@@ -241,6 +241,7 @@ export class SchedulingService {
     accountId: string,
     proposedAt: Date,
     minGapHours: number,
+    excludePostId?: string
   ): Promise<boolean> {
     const gapMs = minGapHours * 3600 * 1000;
     const lower = new Date(proposedAt.getTime() - gapMs);
@@ -251,6 +252,7 @@ export class SchedulingService {
       WHERE social_account_id = ${accountId}
         AND schedule_status IN ('SCHEDULED', 'SUGGESTED')
         AND scheduled_at BETWEEN ${lower.toISOString()} AND ${upper.toISOString()}
+        ${excludePostId ? sql`AND id != ${excludePostId}` : sql``}
       LIMIT 1
     `;
     return conflicts.length > 0;
@@ -279,6 +281,7 @@ export class SchedulingService {
     contentIdeaId: string,
     accountId: string,
     proposedAt: Date,
+    excludePostId?: string
   ): Promise<ScheduleValidationResult> {
     const errors: string[] = [];
 
@@ -305,11 +308,12 @@ export class SchedulingService {
     `;
     // Note: WAITING_FOR_MEDIA is allowed at schedule time; blocked at publish time
 
-    // 4. No active schedule already exists
+    // 4. No active schedule already exists (unless we're updating it)
     const existingSchedule = await sql`
       SELECT id FROM posts
       WHERE content_idea_id = ${contentIdeaId}
         AND schedule_status IN ('SCHEDULED', 'SUGGESTED')
+        ${excludePostId ? sql`AND id != ${excludePostId}` : sql``}
       LIMIT 1
     `;
     if (existingSchedule.length > 0) {
@@ -344,7 +348,7 @@ export class SchedulingService {
     // 7. No time conflict
     const prefs = await this.getPreferences(accountId);
     const minGap = prefs.min_gap_hours ?? prefs.minGapHours ?? 4;
-    const conflict = await this.detectConflicts(accountId, proposedAt, minGap);
+    const conflict = await this.detectConflicts(accountId, proposedAt, minGap, excludePostId);
     if (conflict) {
       errors.push(`Another post is scheduled too close to this time (minimum gap: ${minGap}h)`);
     }
