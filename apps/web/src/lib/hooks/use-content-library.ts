@@ -43,7 +43,7 @@ export interface ContentLibraryFilters {
   limit?: number;
 }
 
-const fetcher = (url: string) => apiClient.get<any>(url);
+const fetcherRaw = (url: string) => apiClient.getRaw<any>(url);
 
 export function useContentLibrary(filters: ContentLibraryFilters = {}) {
   const params = new URLSearchParams();
@@ -57,7 +57,7 @@ export function useContentLibrary(filters: ContentLibraryFilters = {}) {
   const queryString = params.toString();
   const url = `/api/content/ideas${queryString ? `?${queryString}` : ''}`;
 
-  const { data, error, isLoading, mutate } = useSWR(url, fetcher, {
+  const { data, error, isLoading, mutate } = useSWR(url, fetcherRaw, {
     revalidateOnFocus: false,
     keepPreviousData: true,
   });
@@ -74,14 +74,14 @@ export function useContentLibrary(filters: ContentLibraryFilters = {}) {
 
 export function useNeedsAttention() {
   const { data, error, isLoading, mutate } = useSWR(
-    '/api/content/needs-attention',
-    fetcher,
+    '/api/content/ideas?assetStatus=failed&limit=10',
+    fetcherRaw,
     { revalidateOnFocus: true }
   );
 
   return {
     items: (data?.data ?? []) as ContentListItem[],
-    count: data?.count ?? 0,
+    count: data?.total ?? 0,
     error,
     isLoading,
     refresh: mutate,

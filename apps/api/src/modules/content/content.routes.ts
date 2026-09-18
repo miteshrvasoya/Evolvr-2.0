@@ -88,27 +88,6 @@ export default async function contentRoutes(app: FastifyInstance) {
     };
   });
 
-  // ── Needs Attention ──────────────────────────────────────────────────────────
-  app.get('/content/needs-attention', async (request: any, reply) => {
-    const userId = request.user?.id;
-    if (!userId) return reply.status(401).send({ error: 'Unauthorized', message: 'Missing user' });
-    const accountId = await getPrimaryAccount(userId);
-    if (!accountId) return { success: true, data: [], count: 0 };
-
-    const items = await sql`
-      SELECT ci.id, ci.concept, ci.hook, ci.format, ci.needs_attention_reason,
-             ci.asset_generation_status, ci.created_at
-      FROM content_ideas ci
-      WHERE ci.social_account_id = ${accountId} AND ci.needs_attention = true
-      ORDER BY ci.updated_at DESC
-      LIMIT 50
-    `;
-    
-    console.log('[needs-attention] RETURNING items:', items.length, 'accountId:', accountId);
-
-    return { success: true, data: items, count: items.length };
-  });
-
   // ── Content Detail ───────────────────────────────────────────────────────────
   app.get('/content/ideas/:id', async (request: any, reply) => {
     const { id: ideaId } = request.params as any;

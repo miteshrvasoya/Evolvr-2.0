@@ -30,6 +30,16 @@ async function request<T>(
   body?: unknown,
   serverToken?: string,
 ): Promise<T> {
+  const json = await requestRaw<T>(method, path, body, serverToken);
+  return json.data;
+}
+
+async function requestRaw<T>(
+  method: string,
+  path: string,
+  body?: unknown,
+  serverToken?: string,
+): Promise<ApiResponse<T>> {
   const token = serverToken ?? getToken();
   const headers: Record<string, string> = {};
   if (body !== undefined) {
@@ -54,12 +64,15 @@ async function request<T>(
     );
   }
 
-  return json.data;
+  return json;
 }
 
 export const apiClient = {
   get<T>(path: string, serverToken?: string) {
     return request<T>('GET', path, undefined, serverToken);
+  },
+  getRaw<T>(path: string, serverToken?: string) {
+    return requestRaw<T>('GET', path, undefined, serverToken);
   },
   post<T>(path: string, body?: unknown, serverToken?: string) {
     return request<T>('POST', path, body, serverToken);

@@ -3,15 +3,15 @@
 import useSWR from 'swr';
 import { apiClient } from '@/lib/api-client';
 
-const fetcher = (url: string) => apiClient.get<any>(url);
+const fetcherRaw = (url: string) => apiClient.getRaw<any>(url);
 
 export function useNeedsAttentionCount() {
-  const { data } = useSWR('/api/content/needs-attention', fetcher, {
+  const { data } = useSWR('/api/content/ideas?assetStatus=failed&limit=1', fetcherRaw, {
     refreshInterval: 30_000,
     revalidateOnFocus: true,
   });
 
-  const count = data?.count ?? 0;
+  const count = data?.total ?? 0;
 
   return { count };
 }
