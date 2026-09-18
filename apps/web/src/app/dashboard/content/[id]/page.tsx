@@ -1,83 +1,103 @@
 'use client';
 
-import { use, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
-import { useContentDetail, useGenerationHistory, type ContentPrompt, type MediaRequirement } from '@/lib/hooks/use-content-detail';
+import {
+  useContentDetail,
+  useGenerationHistory,
+  type ContentPrompt,
+} from '@/lib/hooks/use-content-detail';
 import { useAssetActions } from '@/lib/hooks/use-asset-actions';
 import { MediaUploader } from '@/components/media/MediaUploader';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import {
   ArrowLeft, AlertTriangle, CheckCircle2, Clock, RefreshCw,
   ImagePlus, Sparkles, Copy, Check, Upload, Loader2, XCircle,
-  History, ChevronDown, ChevronRight, Pencil, Zap, ExternalLink,
-  Eye, FileText,
+  History, ChevronDown, ChevronRight, Pencil, Zap, Bot, User,
+  Eye, FileText, Image, Film, Hash, Calendar,
+  ExternalLink, RotateCcw, Info,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from '@/lib/hooks/use-toast';
 import { formatDistanceToNow, format } from 'date-fns';
 
-const STATUS_CONFIG: Record<string, { label: string; variant: 'success' | 'destructive' | 'secondary' | 'outline' }> = {
-  draft:            { label: 'Draft',           variant: 'secondary'   },
-  waiting_approval: { label: 'Awaiting Review', variant: 'outline'     },
-  ready:            { label: 'Ready',           variant: 'success'     },
-  blocked:          { label: 'Blocked',         variant: 'destructive' },
+const STATUS_CONFIG: Record<string, { label: string; cls: string; dot: string }> = {
+  draft:            { label: 'Draft',            cls: 'bg-slate-100 text-slate-700 border-slate-200',      dot: 'bg-slate-400' },
+  waiting_approval: { label: 'Awaiting Review',  cls: 'bg-amber-50 text-amber-700 border-amber-200',      dot: 'bg-amber-400' },
+  ready:            { label: 'Ready to Publish', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200', dot: 'bg-emerald-400' },
+  blocked:          { label: 'Blocked',           cls: 'bg-red-50 text-red-700 border-red-200',            dot: 'bg-red-400' },
 };
 
-const ASSET_STATUS_CONFIG: Record<string, { label: string; icon: any; cls: string }> = {
-  completed:       { label: 'Assets Ready',   icon: CheckCircle2,  cls: 'text-emerald-500' },
-  needs_attention: { label: 'Needs Attention',icon: AlertTriangle, cls: 'text-orange-500'  },
-  pending:         { label: 'Generating',     icon: Clock,         cls: 'text-amber-500'   },
-  generating:      { label: 'Generating',     icon: Clock,         cls: 'text-amber-500'   },
-  none:            { label: 'No Assets',      icon: ImagePlus,     cls: 'text-muted-foreground' },
+const ASSET_STATUS_CONFIG: Record<string, { label: string; icon: any; cls: string; bg: string }> = {
+  completed:       { label: 'Assets Ready',    icon: CheckCircle2,  cls: 'text-emerald-600', bg: 'bg-emerald-50 border-emerald-200' },
+  needs_attention: { label: 'Needs Attention', icon: AlertTriangle, cls: 'text-orange-600',  bg: 'bg-orange-50 border-orange-200' },
+  pending:         { label: 'Generating...',   icon: Clock,         cls: 'text-amber-600',   bg: 'bg-amber-50 border-amber-200' },
+  generating:      { label: 'Generating...',   icon: Clock,         cls: 'text-amber-600',   bg: 'bg-amber-50 border-amber-200' },
+  none:            { label: 'No Assets Yet',   icon: ImagePlus,     cls: 'text-slate-500',   bg: 'bg-slate-50 border-slate-200' },
 };
 
-const ERROR_LABELS: Record<string, { label: string; tip: string }> = {
-  timeout:        { label: 'Timeout',          tip: 'Provider took too long. Copy the prompt and try another tool.' },
-  rate_limited:   { label: 'Rate Limited',     tip: 'Wait a few minutes and retry generation.' },
-  provider_error: { label: 'Provider Error',   tip: 'Internal provider failure. Retry or use the prompt below manually.' },
-  content_policy: { label: 'Content Policy',   tip: 'Prompt was rejected. Use "Improve Prompt" to refine it.' },
-  invalid_prompt: { label: 'Invalid Prompt',   tip: 'Prompt format rejected. Edit or improve it below.' },
-  quota_exceeded: { label: 'Quota Exceeded',   tip: 'Provider quota exhausted. Copy the prompt to use another tool.' },
-  permanent:      { label: 'Permanent Error',  tip: 'Cannot auto-retry. Copy the prompt below for manual generation.' },
-  transient:      { label: 'Transient Error',  tip: 'Temporary error. Retry is likely to succeed.' },
+const SOURCE_CONFIG: Record<string, { label: string; icon: any; cls: string }> = {
+  AI_GENERATED:   { label: 'AI Generated',  icon: Bot,    cls: 'bg-purple-50 text-purple-700 border-purple-200' },
+  MANUALLY_ADDED: { label: 'Manual Upload', icon: Upload, cls: 'bg-blue-50 text-blue-700 border-blue-200' },
+  USER_UPLOADED:  { label: 'User Uploaded', icon: User,   cls: 'bg-sky-50 text-sky-700 border-sky-200' },
+  ai_generated:   { label: 'AI Generated',  icon: Bot,    cls: 'bg-purple-50 text-purple-700 border-purple-200' },
+  manually_added: { label: 'Manual Upload', icon: Upload, cls: 'bg-blue-50 text-blue-700 border-blue-200' },
+  user_uploaded:  { label: 'User Uploaded', icon: User,   cls: 'bg-sky-50 text-sky-700 border-sky-200' },
 };
 
-function CopyButton({ text, label = 'Copy' }: { text: string; label?: string }) {
+const ERROR_LABELS: Record<string, string> = {
+  timeout:        'Request Timeout',
+  rate_limited:   'Rate Limited',
+  provider_error: 'Provider Error',
+  content_policy: 'Content Policy Violation',
+  invalid_prompt: 'Invalid Prompt',
+  quota_exceeded: 'Quota Exceeded',
+  permanent:      'Permanent Error',
+  transient:      'Transient Error',
+};
+
+function CopyButton({ text, label = 'Copy', size = 'sm' }: { text: string; label?: string; size?: 'sm' | 'xs' }) {
   const [copied, setCopied] = useState(false);
   async function handleCopy() {
     try { await navigator.clipboard.writeText(text); }
     catch {
       const ta = document.createElement('textarea');
-      ta.value = text;
-      document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+      ta.value = text; document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); document.body.removeChild(ta);
     }
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
   return (
-    <Button variant="outline" size="sm" onClick={handleCopy} className="gap-1.5 h-8">
-      {copied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
-      {copied ? 'Copied!' : label}
+    <Button
+      variant="ghost" size="sm"
+      onClick={handleCopy}
+      className={cn('gap-1.5 transition-all', size === 'xs' ? 'h-7 text-xs px-2' : 'h-8 text-xs')}
+    >
+      {copied
+        ? <><Check className="h-3 w-3 text-emerald-500" /> Copied!</>
+        : <><Copy className="h-3 w-3" /> {label}</>
+      }
     </Button>
   );
 }
 
-// ── Prominent Prompt Card ─────────────────────────────────────────────────────
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 mb-1.5">
+      {children}
+    </p>
+  );
+}
+
 function PromptCard({
-  prompt,
-  isCurrent,
-  ideaId,
-  onRefresh,
-  hasFailed,
+  prompt, isCurrent, ideaId, onRefresh, hasFailed,
 }: {
-  prompt: ContentPrompt;
-  isCurrent: boolean;
-  ideaId: string;
-  onRefresh: () => void;
-  hasFailed: boolean;
+  prompt: ContentPrompt; isCurrent: boolean; ideaId: string;
+  onRefresh: () => void; hasFailed: boolean;
 }) {
   const [expanded, setExpanded] = useState(isCurrent);
   const [editing, setEditing] = useState(false);
@@ -85,45 +105,43 @@ function PromptCard({
   const [saving, setSaving] = useState(false);
   const { editPrompt, isImproving, improvePrompt } = useAssetActions(ideaId, onRefresh);
 
-  const sourceColors = {
-    ai_generated: 'text-purple-600 bg-purple-50 border-purple-200',
-    user_edited:  'text-blue-600 bg-blue-50 border-blue-200',
-    improved:     'text-emerald-600 bg-emerald-50 border-emerald-200',
+  const promptSourceColors = {
+    ai_generated: 'bg-purple-50 text-purple-700 border-purple-200',
+    user_edited:  'bg-blue-50 text-blue-700 border-blue-200',
+    improved:     'bg-emerald-50 text-emerald-700 border-emerald-200',
   } as const;
-  const sourceLabel = { ai_generated: 'AI Generated', user_edited: 'User Edited', improved: 'AI Improved' } as const;
-  const srcColor = sourceColors[prompt.source as keyof typeof sourceColors] ?? sourceColors.ai_generated;
-  const srcLabel = sourceLabel[prompt.source as keyof typeof sourceLabel] ?? 'Generated';
+  const promptSourceLabels = { ai_generated: 'AI Generated', user_edited: 'User Edited', improved: 'AI Improved' } as const;
+  const srcColor = promptSourceColors[prompt.source as keyof typeof promptSourceColors] ?? promptSourceColors.ai_generated;
+  const srcLabel = promptSourceLabels[prompt.source as keyof typeof promptSourceLabels] ?? 'Generated';
 
   async function handleSave() {
     if (!editText.trim()) return;
     setSaving(true);
     try {
       await editPrompt(prompt.id, editText);
-      toast({ title: 'Prompt saved', description: 'New user-edited version created.' });
-      setEditing(false);
-      onRefresh();
-    } catch {
-      toast({ variant: 'destructive', title: 'Failed to save' });
-    } finally { setSaving(false); }
+      toast({ title: 'Prompt saved', description: 'New version created.' });
+      setEditing(false); onRefresh();
+    } catch { toast({ variant: 'destructive', title: 'Failed to save' }); }
+    finally { setSaving(false); }
   }
 
   return (
     <div className={cn(
-      'rounded-xl border transition-all',
-      isCurrent && hasFailed ? 'border-orange-200 bg-orange-50/40 dark:border-orange-800 dark:bg-orange-950/20' : '',
-      isCurrent && !hasFailed ? 'border-primary/20 bg-primary/5' : '',
-      !isCurrent ? 'bg-muted/20' : '',
+      'rounded-xl border overflow-hidden transition-all duration-200',
+      isCurrent && hasFailed  ? 'border-orange-200 bg-gradient-to-b from-orange-50/60 to-amber-50/40' :
+      isCurrent && !hasFailed ? 'border-primary/25 bg-gradient-to-b from-primary/5 to-transparent' :
+      'border-border/60 bg-muted/20',
     )}>
       <button
         onClick={() => setExpanded(v => !v)}
-        className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left"
+        className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-black/[0.02] transition-colors"
       >
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap min-w-0">
           {expanded ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
           <span className="text-sm font-semibold">Prompt v{prompt.promptVersion}</span>
-          {isCurrent && <Badge className="text-[10px] px-1.5 py-0 h-4">Current</Badge>}
-          <span className={cn('text-[10px] font-semibold px-1.5 py-0.5 rounded-full border capitalize', srcColor)}>{srcLabel}</span>
-          <span className="text-[10px] capitalize text-muted-foreground">{prompt.assetType.replace('_', ' ')}</span>
+          {isCurrent && <span className="text-[10px] font-semibold bg-primary text-primary-foreground px-1.5 py-0.5 rounded-full">Current</span>}
+          <span className={cn('text-[10px] font-semibold px-1.5 py-0.5 rounded-full border', srcColor)}>{srcLabel}</span>
+          <span className="text-[10px] text-muted-foreground capitalize hidden sm:inline">{prompt.assetType.replace('_', ' ')}</span>
         </div>
         <span className="text-[10px] text-muted-foreground shrink-0">
           {formatDistanceToNow(new Date(prompt.createdAt), { addSuffix: true })}
@@ -131,67 +149,55 @@ function PromptCard({
       </button>
 
       {expanded && (
-        <div className="px-4 pb-4 space-y-3">
+        <div className="px-4 pb-4 space-y-3 border-t border-border/40">
           {editing ? (
-            <div className="space-y-2">
+            <div className="space-y-3 pt-3">
               <textarea
                 value={editText}
                 onChange={e => setEditText(e.target.value)}
-                className="w-full text-xs font-mono rounded-lg border bg-background p-3 h-32 resize-none focus:outline-none focus:ring-2 focus:ring-primary/30"
+                className="w-full text-xs font-mono rounded-lg border bg-background p-3 h-36 resize-none focus:outline-none focus:ring-2 focus:ring-primary/30 leading-relaxed"
               />
-              <div className="flex gap-2">
-                <Button size="sm" onClick={handleSave} disabled={saving} className="h-8 text-xs gap-1">
+              <div className="flex items-center gap-2">
+                <Button size="sm" onClick={handleSave} disabled={saving} className="h-8 text-xs gap-1.5">
                   {saving && <Loader2 className="h-3 w-3 animate-spin" />}
                   Save as New Version
                 </Button>
-                <Button size="sm" variant="ghost" onClick={() => { setEditing(false); setEditText(prompt.promptText); }} className="h-8 text-xs">
-                  Cancel
-                </Button>
+                <Button size="sm" variant="ghost" onClick={() => { setEditing(false); setEditText(prompt.promptText); }} className="h-8 text-xs">Cancel</Button>
+                <p className="text-[10px] text-muted-foreground ml-auto">Original is always preserved</p>
               </div>
-              <p className="text-[10px] text-muted-foreground">Original prompt is always preserved.</p>
             </div>
           ) : (
-            <>
-              {/* The prompt text — prominent + easy to read */}
+            <div className="space-y-3 pt-3">
               <div className={cn(
                 'rounded-lg p-3 text-xs font-mono leading-relaxed whitespace-pre-wrap break-words border',
-                hasFailed && isCurrent
-                  ? 'bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800'
-                  : 'bg-muted/40 border-border',
+                hasFailed && isCurrent ? 'bg-amber-50/80 border-amber-200 text-amber-900' : 'bg-muted/40 border-border/60 text-foreground',
               )}>
                 {prompt.promptText}
               </div>
-
               {hasFailed && isCurrent && (
-                <div className="rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-950/20 dark:border-amber-800 p-3 text-xs space-y-1">
-                  <p className="font-semibold text-amber-800 dark:text-amber-400 flex items-center gap-1.5">
-                    <Zap className="h-3.5 w-3.5" />
-                    Ready to use manually
-                  </p>
-                  <p className="text-amber-700 dark:text-amber-500">
-                    Copy this prompt and paste it into Midjourney, DALL·E, Stable Diffusion, or any other image tool, then upload the result.
-                  </p>
+                <div className="rounded-lg bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 p-3 text-xs flex gap-2.5">
+                  <Zap className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold text-amber-800 mb-0.5">Use this prompt manually</p>
+                    <p className="text-amber-700 leading-relaxed">Copy into Midjourney, DALL-E, Stable Diffusion, then upload the result above.</p>
+                  </div>
                 </div>
               )}
-
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-1.5">
                 <CopyButton text={prompt.promptText} label="Copy Prompt" />
                 {isCurrent && (
                   <>
-                    <Button variant="ghost" size="sm" onClick={() => setEditing(true)} className="h-8 text-xs gap-1">
+                    <Button variant="ghost" size="sm" onClick={() => setEditing(true)} className="h-8 text-xs gap-1.5">
                       <Pencil className="h-3 w-3" /> Edit
                     </Button>
                     <Button
                       variant="ghost" size="sm"
                       onClick={async () => {
-                        try {
-                          await improvePrompt(prompt.assetType);
-                          toast({ title: 'Prompt improved', description: 'New version saved.' });
-                          onRefresh();
-                        } catch { toast({ variant: 'destructive', title: 'Failed to improve' }); }
+                        try { await improvePrompt(prompt.assetType); toast({ title: 'Prompt improved' }); onRefresh(); }
+                        catch { toast({ variant: 'destructive', title: 'Improve failed' }); }
                       }}
                       disabled={isImproving}
-                      className="h-8 text-xs gap-1 text-purple-600 hover:text-purple-700"
+                      className="h-8 text-xs gap-1.5 text-purple-600 hover:text-purple-700 hover:bg-purple-50"
                     >
                       {isImproving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
                       AI Improve
@@ -199,7 +205,7 @@ function PromptCard({
                   </>
                 )}
               </div>
-            </>
+            </div>
           )}
         </div>
       )}
@@ -207,496 +213,477 @@ function PromptCard({
   );
 }
 
-// ── Asset Panel ───────────────────────────────────────────────────────────────
-function AssetPanel({
-  ideaId,
-  assets,
-  prompts,
-  mediaRequirements,
-  attempts,
-  onRefresh,
-}: {
-  ideaId: string;
-  assets: any[];
-  prompts: ContentPrompt[];
-  mediaRequirements: any[];
-  attempts: any[];
-  onRefresh: () => void;
-}) {
-  const [uploading, setUploading] = useState(false);
-  const { isRetrying, retryAsset } = useAssetActions(ideaId, onRefresh);
-
-  const activeImage = assets.find(a => a.assetType === 'image' && a.assetStatus === 'ACTIVE') 
-                   || assets.find(a => a.assetType === 'image'); // fallback if none active
-  
-  const imageRequirement = mediaRequirements?.find(r => r.mediaType === 'image');
-  const videoRequirement = mediaRequirements?.find(r => r.mediaType === 'video_placeholder');
-
-  const imagePrompts = prompts.filter(p => p.assetType === 'image');
-  const videoPrompts = prompts.filter(p => p.assetType === 'video_placeholder' || p.assetType === 'VIDEO');
-  const isFailed = imageRequirement?.status === 'FAILED' || imageRequirement?.status === 'PENDING';
-
-  // Extract latest attempt info for errors since failed attempts aren't in `assets`
-  const latestImageAttempt = attempts.find(a => a.assetType === 'image');
-  const latestVideoAttempt = attempts.find(a => a.assetType === 'video_placeholder' || a.assetType === 'VIDEO');
+function MediaPreviewCard({ asset, onReplace }: { asset: any; onReplace: () => void }) {
+  const srcKey = asset.source?.toUpperCase() ?? asset.source;
+  const srcConf = SOURCE_CONFIG[srcKey] ?? SOURCE_CONFIG[asset.source] ?? { label: asset.source ?? 'Unknown', icon: Image, cls: 'bg-slate-50 text-slate-700 border-slate-200' };
+  const SrcIcon = srcConf.icon;
+  const isVideo = asset.mimeType?.startsWith('video/') || asset.assetType === 'video';
 
   return (
-    <div className="space-y-6">
-      {/* Image asset */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold flex items-center gap-2">
-            <ImagePlus className="h-4 w-4" />
-            Image Media
-            {imageRequirement?.status && (
-              <Badge
-                variant={imageRequirement.status === 'READY' ? 'success' : imageRequirement.status === 'FAILED' ? 'destructive' : 'secondary'}
-                className="text-[10px]"
-              >
-                {imageRequirement.status}
-              </Badge>
-            )}
-          </h3>
-          <div className="flex gap-2">
-            {(imageRequirement?.status === 'FAILED' || imageRequirement?.status === 'PENDING') && imagePrompts.length > 0 && (
-              <Button
-                size="sm" variant="outline"
-                onClick={() => retryAsset('image')}
-                disabled={isRetrying}
-                className="h-8 text-xs gap-1"
-              >
-                {isRetrying ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-                Retry AI
-              </Button>
-            )}
-          </div>
+    <div className="rounded-2xl border border-border/60 overflow-hidden bg-card shadow-sm">
+      <div className="relative group bg-gradient-to-br from-slate-100 to-slate-200 aspect-[4/3] overflow-hidden">
+        {isVideo
+          ? <video src={asset.storageUrl} controls className="w-full h-full object-contain" />
+          : <img src={asset.storageUrl} alt="Media asset" className="w-full h-full object-contain" />
+        }
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-end justify-between p-3">
+          <a href={asset.storageUrl} target="_blank" rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-[10px] font-semibold text-white bg-white/20 hover:bg-white/30 backdrop-blur-sm px-2 py-1 rounded-full border border-white/30 transition-colors">
+            <ExternalLink className="h-3 w-3" /> View Full
+          </a>
+          <button onClick={onReplace}
+            className="text-[10px] font-semibold text-white bg-white/20 hover:bg-white/30 backdrop-blur-sm px-2 py-1 rounded-full border border-white/30 transition-colors">
+            Replace
+          </button>
         </div>
-
-        {/* Image preview or placeholder */}
-        {activeImage?.storageUrl ? (
-          <div className="relative rounded-xl overflow-hidden border bg-muted aspect-video max-w-sm group">
-            <img src={activeImage.storageUrl} alt="Generated" className="w-full h-full object-cover" />
-            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-              <Button size="sm" variant="secondary" onClick={() => setUploading(!uploading)}>
-                Replace Media
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <div className="rounded-xl border-2 border-dashed border-border bg-muted/20 aspect-video max-w-sm flex flex-col items-center justify-center gap-2 text-muted-foreground/50">
-            <ImagePlus className="h-8 w-8" />
-            <span className="text-xs">No media yet</span>
-            {!uploading && (
-              <Button size="sm" variant="outline" onClick={() => setUploading(true)} className="mt-2">
-                Upload Manually
-              </Button>
-            )}
-          </div>
-        )}
-
-        {uploading && imageRequirement && (
-          <div className="max-w-sm animate-in fade-in slide-in-from-top-2">
-            <MediaUploader 
-              contentIdeaId={ideaId} 
-              mediaRequirement={imageRequirement} 
-              onUploadComplete={() => { setUploading(false); onRefresh(); }} 
-            />
-            <Button variant="ghost" size="sm" onClick={() => setUploading(false)} className="mt-2 text-xs w-full">Cancel Upload</Button>
-          </div>
-        )}
-
-        {/* Error detail */}
-        {(activeImage?.errorCategory || (latestImageAttempt?.status === 'failed' && latestImageAttempt?.errorCategory)) && (
-          <div className="rounded-lg bg-red-50 border border-red-200 dark:bg-red-950/20 dark:border-red-800 p-3 space-y-1">
-            <div className="flex items-center gap-2">
-              <XCircle className="h-4 w-4 text-red-500 shrink-0" />
-              <p className="text-xs font-semibold text-red-700 dark:text-red-400">
-                {ERROR_LABELS[activeImage?.errorCategory || latestImageAttempt?.errorCategory]?.label || (activeImage?.errorCategory || latestImageAttempt?.errorCategory)}
-              </p>
-            </div>
-            {(activeImage?.errorMessage || latestImageAttempt?.errorMessage) && (
-              <p className="text-xs text-red-600 dark:text-red-500 ml-6 font-mono">{activeImage?.errorMessage || latestImageAttempt?.errorMessage}</p>
-            )}
-          </div>
-        )}
-
-        {/* Image prompts */}
-        {imagePrompts.length > 0 && (
-          <div className="space-y-2">
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Image Prompts</h4>
-            {imagePrompts.map((p, i) => (
-              <PromptCard key={p.id} prompt={p} isCurrent={i === 0} ideaId={ideaId} onRefresh={onRefresh} hasFailed={isFailed} />
-            ))}
-          </div>
-        )}
       </div>
-
-      {/* Video prompts (if any) */}
-      {videoPrompts.length > 0 && (
-        <div className="space-y-4">
-           <h3 className="text-sm font-semibold flex items-center gap-2">
-            <ImagePlus className="h-4 w-4" />
-            Video Media
-            {videoRequirement?.status && (
-              <Badge
-                variant={videoRequirement.status === 'READY' ? 'success' : videoRequirement.status === 'FAILED' ? 'destructive' : 'secondary'}
-                className="text-[10px]"
-              >
-                {videoRequirement.status}
-              </Badge>
-            )}
-          </h3>
-          {videoRequirement && (
-            <div className="max-w-sm">
-              <MediaUploader 
-                contentIdeaId={ideaId} 
-                mediaRequirement={videoRequirement} 
-                onUploadComplete={() => { onRefresh(); }} 
-              />
-            </div>
-          )}
-          <div className="space-y-2">
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Video Prompts</h4>
-            {videoPrompts.map((p, i) => (
-              <PromptCard key={p.id} prompt={p} isCurrent={i === 0} ideaId={ideaId} onRefresh={onRefresh} hasFailed={false} />
-            ))}
-          </div>
+      <div className="px-3 py-2.5 flex items-center justify-between gap-2 border-t border-border/40 bg-muted/20">
+        <div className={cn('flex items-center gap-1.5 text-[10px] font-semibold px-2 py-1 rounded-full border', srcConf.cls)}>
+          <SrcIcon className="h-3 w-3" />
+          {srcConf.label}
         </div>
-      )}
-
-      {imagePrompts.length === 0 && videoPrompts.length === 0 && (
-        <div className="rounded-xl border-2 border-dashed border-border bg-card p-6 text-center">
-          <Sparkles className="h-6 w-6 text-muted-foreground/30 mx-auto mb-2" />
-          <p className="text-sm text-muted-foreground">No AI prompts yet.</p>
-          <p className="text-xs text-muted-foreground/60 mt-1">Prompts are generated automatically when the agent creates content.</p>
-        </div>
-      )}
+        {asset.mimeType && <span className="text-[10px] text-muted-foreground font-mono uppercase">{asset.mimeType.split('/')[1]}</span>}
+      </div>
     </div>
   );
 }
 
-// ── Generation History ─────────────────────────────────────────────────────────
 function GenerationHistorySection({ attempts }: { attempts: any[] }) {
-  if (!attempts.length) return null;
+  if (!attempts.length) return (
+    <div className="rounded-2xl border border-dashed border-border bg-muted/10 p-10 text-center">
+      <History className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+      <p className="text-sm text-muted-foreground">No generation attempts yet</p>
+    </div>
+  );
   return (
     <div className="space-y-3">
-      <h3 className="text-sm font-semibold flex items-center gap-2">
-        <History className="h-4 w-4" />
-        Generation History
-        <span className="text-xs font-normal text-muted-foreground">({attempts.length} attempt{attempts.length !== 1 ? 's' : ''})</span>
-      </h3>
-      <div className="space-y-2">
-        {attempts.map((a, i) => (
-          <div key={a.id} className={cn(
-            'rounded-lg border p-3 space-y-2 text-xs',
-            a.status === 'failed' ? 'border-red-200 bg-red-50/30 dark:border-red-800 dark:bg-red-950/20' :
-            a.status === 'generated' ? 'border-emerald-200 bg-emerald-50/30 dark:border-emerald-800' :
-            'bg-muted/20',
-          )}>
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                {a.status === 'failed' ? (
-                  <XCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />
-                ) : a.status === 'generated' ? (
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-                ) : (
-                  <Clock className="h-3.5 w-3.5 text-amber-500 shrink-0" />
-                )}
-                <span className="font-semibold capitalize">{a.assetType?.replace('_', ' ')} • Attempt #{a.attemptNumber}</span>
-                {i === 0 && <Badge className="text-[9px] py-0 px-1 h-3.5">Latest</Badge>}
+      {attempts.map((a, i) => (
+        <div key={a.id} className={cn(
+          'rounded-2xl border overflow-hidden',
+          a.status === 'failed'    ? 'border-red-200 bg-red-50/30' :
+          a.status === 'generated' ? 'border-emerald-200 bg-emerald-50/20' :
+          'border-border/60 bg-muted/10',
+        )}>
+          <div className="flex items-center justify-between gap-3 px-4 py-3">
+            <div className="flex items-center gap-2.5">
+              <div className={cn('h-7 w-7 rounded-full flex items-center justify-center shrink-0',
+                a.status === 'failed' ? 'bg-red-100' : a.status === 'generated' ? 'bg-emerald-100' : 'bg-amber-100')}>
+                {a.status === 'failed' ? <XCircle className="h-4 w-4 text-red-500" /> :
+                 a.status === 'generated' ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> :
+                 <Clock className="h-4 w-4 text-amber-500" />}
               </div>
-              <span className="text-muted-foreground">
-                {a.completedAt ? format(new Date(a.completedAt), 'MMM d, HH:mm') : 'In progress'}
-              </span>
-            </div>
-            <div className="flex flex-col gap-1 ml-5 mt-2 text-[10px] text-muted-foreground">
-              {a.errorMessage && (
-                <p className="text-red-600 dark:text-red-400 font-mono text-xs">{a.errorMessage}</p>
-              )}
-              {a.errorCategory && a.status === 'failed' && (
-                <p>Category: <span className="font-semibold text-red-500">{a.errorCategory}</span></p>
-              )}
-              
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-1 border-t pt-2 border-border/50">
-                {a.provider && <p>Provider: <span className="font-medium text-foreground">{a.provider}</span></p>}
-                {a.model && <p>Model: <span className="font-medium text-foreground">{a.model}</span></p>}
-                {a.durationMs != null && <p>Duration: <span className="font-medium text-foreground">{(a.durationMs / 1000).toFixed(2)}s</span></p>}
-                {a.idempotencyKey && <p className="col-span-2 truncate">Key: <span className="font-mono text-foreground">{a.idempotencyKey}</span></p>}
-              </div>
-            </div>
-
-            {a.promptText && (
-              <div className="ml-5 space-y-1 mt-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground uppercase tracking-wider text-[9px] font-semibold">Prompt used</span>
-                  <div className="flex gap-1.5">
-                    {a.promptVersion && <Badge variant="outline" className="text-[9px] h-4 py-0 px-1">v{a.promptVersion}</Badge>}
-                    {a.promptSource && <Badge variant="outline" className="text-[9px] h-4 py-0 px-1 capitalize">{a.promptSource.replace('_', ' ')}</Badge>}
-                  </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold capitalize">{a.assetType?.replace('_', ' ')}</span>
+                  <span className="text-xs text-muted-foreground">Attempt #{a.attemptNumber}</span>
+                  {i === 0 && <span className="text-[10px] font-semibold bg-primary/10 text-primary px-1.5 py-0.5 rounded-full">Latest</span>}
                 </div>
-                <p className="font-mono bg-muted/40 rounded p-2 text-[10px] line-clamp-3 overflow-hidden">{a.promptText}</p>
+                <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5">
+                  {a.provider && <span className="font-mono">{a.provider}</span>}
+                  {a.durationMs != null && <span>{(a.durationMs / 1000).toFixed(2)}s</span>}
+                  {a.completedAt && <span>{format(new Date(a.completedAt), 'MMM d, HH:mm')}</span>}
+                </div>
               </div>
-            )}
+            </div>
+            <div className={cn('text-xs font-semibold px-2 py-0.5 rounded-full border',
+              a.status === 'failed' ? 'bg-red-50 text-red-600 border-red-200' :
+              a.status === 'generated' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
+              'bg-amber-50 text-amber-600 border-amber-200')}>
+              {a.status}
+            </div>
           </div>
-        ))}
-      </div>
+          {a.status === 'failed' && (a.errorMessage || a.errorCategory) && (
+            <div className="px-4 pb-3 space-y-1 border-t border-red-100">
+              <div className="flex items-center gap-1.5 mt-2">
+                <AlertTriangle className="h-3.5 w-3.5 text-red-500 shrink-0" />
+                <span className="text-xs font-semibold text-red-700">{ERROR_LABELS[a.errorCategory] || a.errorCategory || 'Error'}</span>
+              </div>
+              {a.errorMessage && (
+                <p className="text-xs font-mono text-red-600 ml-5 bg-red-50/80 rounded px-2 py-1 border border-red-100">{a.errorMessage}</p>
+              )}
+              {a.idempotencyKey && <p className="text-[10px] text-muted-foreground ml-5 truncate font-mono">Key: {a.idempotencyKey}</p>}
+            </div>
+          )}
+          {a.promptText && (
+            <div className="px-4 pb-3 border-t border-border/40">
+              <div className="flex items-center justify-between mt-2 mb-1.5">
+                <SectionLabel>Prompt Used</SectionLabel>
+                <div className="flex gap-1">
+                  {a.promptVersion && <span className="text-[10px] bg-muted text-muted-foreground font-mono px-1.5 py-0.5 rounded border">v{a.promptVersion}</span>}
+                  {a.promptSource && <span className="text-[10px] bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded border border-purple-200 capitalize">{a.promptSource.replace('_', ' ')}</span>}
+                </div>
+              </div>
+              <p className="text-[11px] font-mono bg-muted/50 rounded-lg px-3 py-2 leading-relaxed text-foreground/80 line-clamp-3 border border-border/40">{a.promptText}</p>
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
 
-// ── Main Page ─────────────────────────────────────────────────────────────────
-interface PageProps {
-  params: { id: string };
-}
+interface PageProps { params: { id: string }; }
 
 export default function ContentDetailPage({ params }: PageProps) {
   const { id } = params;
   const { content, isLoading, refresh } = useContentDetail(id);
   const { attempts, refresh: refreshHistory } = useGenerationHistory(id);
-  const [activeSection, setActiveSection] = useState<'overview' | 'media' | 'history' | 'versions'>('media');
+  const [activeSection, setActiveSection] = useState<'media' | 'overview' | 'history' | 'versions'>('media');
+  const [uploading, setUploading] = useState(false);
+  const { isRetrying, retryAsset } = useAssetActions(id, () => { refresh(); refreshHistory(); });
 
-  function handleRefresh() {
-    refresh();
-    refreshHistory();
-  }
+  function handleRefresh() { refresh(); refreshHistory(); }
 
   if (isLoading) {
     return (
-      <div className="space-y-6 max-w-5xl">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-48" />
-        <Skeleton className="h-96" />
+      <div className="max-w-6xl space-y-6 animate-pulse">
+        <Skeleton className="h-5 w-36" />
+        <Skeleton className="h-40 w-full rounded-2xl" />
+        <div className="grid grid-cols-1 lg:grid-cols-[380px,1fr] gap-6">
+          <Skeleton className="h-80 rounded-2xl" />
+          <Skeleton className="h-80 rounded-2xl" />
+        </div>
       </div>
     );
   }
 
   if (!content) {
     return (
-      <div className="max-w-5xl py-16 text-center space-y-3">
-        <p className="text-muted-foreground">Content not found</p>
-        <Link href="/dashboard/content">
-          <Button variant="outline" size="sm" className="gap-1.5">
-            <ArrowLeft className="h-3.5 w-3.5" /> Back to Library
-          </Button>
-        </Link>
+      <div className="max-w-6xl py-20 text-center space-y-4">
+        <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center mx-auto">
+          <FileText className="h-7 w-7 text-muted-foreground" />
+        </div>
+        <p className="text-lg font-semibold">Content not found</p>
+        <p className="text-sm text-muted-foreground">This content may have been deleted or you do not have access.</p>
+        <Link href="/dashboard/content"><Button variant="outline" className="gap-1.5 mt-2"><ArrowLeft className="h-4 w-4" /> Back to Library</Button></Link>
       </div>
     );
   }
 
-  const statusConf = STATUS_CONFIG[content.status] || { label: content.status, variant: 'secondary' as const };
-  const assetConf = ASSET_STATUS_CONFIG[content.assetGenerationStatus] ?? ASSET_STATUS_CONFIG['none']!;
-  const AssetIcon = assetConf.icon;
-  const hashtags = Array.isArray(content.hashtags) ? content.hashtags : [];
-  const hasFailed = content.assetGenerationStatus === 'needs_attention';
-  const hasPrompts = (content.prompts?.length ?? 0) > 0;
+  const statusConf  = STATUS_CONFIG[content.status] ?? { label: content.status, cls: 'bg-slate-100 text-slate-700 border-slate-200', dot: 'bg-slate-400' };
+  const assetConf   = ASSET_STATUS_CONFIG[content.assetGenerationStatus] ?? ASSET_STATUS_CONFIG['none']!;
+  const AssetIcon   = assetConf.icon;
+  const hashtags    = Array.isArray(content.hashtags) ? content.hashtags : [];
+  const hasFailed   = content.assetGenerationStatus === 'needs_attention';
+  const hasPrompts  = (content.prompts?.length ?? 0) > 0;
+  const assets      = content.assets ?? [];
+  const prompts     = content.prompts ?? [];
+  const mediaReqs   = content.mediaRequirements ?? [];
+  const activeImage = assets.find(a => a.assetType === 'image' && a.assetStatus === 'ACTIVE') || assets.find(a => a.assetType === 'image');
+  const imageReq    = mediaReqs.find(r => r.mediaType === 'image');
+  const videoReq    = mediaReqs.find(r => r.mediaType === 'video_placeholder');
+  const imagePrompts = prompts.filter(p => p.assetType === 'image');
+  const videoPrompts = prompts.filter(p => p.assetType === 'video_placeholder' || p.assetType === 'VIDEO');
+  const latestAttempt = attempts[0];
+  const hasError = latestAttempt?.status === 'failed';
+
+  const tabs = [
+    { key: 'media'    as const, label: 'Media & Prompts', icon: Image,    alert: hasFailed, count: null },
+    { key: 'overview' as const, label: 'Content',         icon: FileText, alert: false,     count: null },
+    { key: 'history'  as const, label: 'History',         icon: History,  alert: false,     count: attempts.length },
+    { key: 'versions' as const, label: 'Versions',        icon: Eye,      alert: false,     count: content.versions?.length },
+  ];
 
   return (
-    <div className="max-w-5xl space-y-6 pb-16">
-      {/* Top bar */}
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <Link
-          href="/dashboard/content"
-          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" />
+    <div className="max-w-6xl space-y-6 pb-20">
+      {/* Top nav */}
+      <div className="flex items-center justify-between gap-4">
+        <Link href="/dashboard/content" className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors group">
+          <ArrowLeft className="h-3.5 w-3.5 group-hover:-translate-x-0.5 transition-transform" />
           Content Library
         </Link>
-        <Button variant="outline" size="sm" onClick={handleRefresh} className="gap-1.5">
+        <Button variant="outline" size="sm" onClick={handleRefresh} className="gap-1.5 h-8 text-xs">
           <RefreshCw className="h-3.5 w-3.5" /> Refresh
         </Button>
       </div>
 
-      {/* ── Needs Attention Hero Banner ── */}
-      {hasFailed && (
-        <div className="rounded-xl border-2 border-orange-300 bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-950/40 dark:to-amber-950/40 dark:border-orange-700 p-5">
-          <div className="flex items-start gap-4">
-            <div className="h-10 w-10 rounded-full bg-orange-100 dark:bg-orange-900/50 flex items-center justify-center shrink-0">
-              <AlertTriangle className="h-5 w-5 text-orange-500" />
+      {/* Hero Header */}
+      <div className={cn(
+        'rounded-2xl border p-5 space-y-4',
+        hasFailed ? 'border-orange-200 bg-gradient-to-br from-orange-50 to-amber-50/60' : 'border-border bg-card',
+      )}>
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="flex-1 min-w-0 space-y-3">
+            <h1 className="text-xl font-bold leading-snug tracking-tight">{content.hook || content.concept}</h1>
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className={cn('flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border', statusConf.cls)}>
+                <span className={cn('h-1.5 w-1.5 rounded-full', statusConf.dot)} />
+                {statusConf.label}
+              </div>
+              <div className={cn('flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border', assetConf.bg, assetConf.cls)}>
+                <AssetIcon className="h-3.5 w-3.5" />
+                {assetConf.label}
+              </div>
+              <span className="text-xs px-2.5 py-1 rounded-full bg-muted border border-border/60 capitalize font-medium">{content.format?.replace('_', ' ')}</span>
+              <span className="text-xs px-2.5 py-1 rounded-full bg-muted border border-border/60 capitalize font-medium">{content.pillar?.replace(/_/g, ' ')}</span>
+              <span className="text-xs text-muted-foreground">v{content.versionNumber}</span>
             </div>
-            <div className="flex-1 min-w-0">
-              <h2 className="text-base font-bold text-orange-800 dark:text-orange-300">Media Generation Failed</h2>
-              {content.needsAttentionReason && (
-                <p className="text-sm text-orange-700 dark:text-orange-400 mt-0.5">{content.needsAttentionReason}</p>
-              )}
-              <p className="text-sm text-orange-600 dark:text-orange-500 mt-2">
-                The AI-generated prompt is preserved below. Copy it to generate the image manually using any image tool (Midjourney, DALL·E, Stable Diffusion, etc.), then upload the result.
-              </p>
-            </div>
-            <div className="flex gap-2 shrink-0">
-              {hasPrompts && (
-                <Button
-                  size="sm"
-                  onClick={() => setActiveSection('media')}
-                  className="gap-1.5 bg-orange-500 hover:bg-orange-600 text-white"
-                >
-                  <Copy className="h-3.5 w-3.5" /> View Prompts
-                </Button>
-              )}
-            </div>
+          </div>
+          <div className="text-right text-[11px] text-muted-foreground space-y-0.5 shrink-0">
+            <div className="flex items-center gap-1 justify-end"><Calendar className="h-3 w-3" /> {formatDistanceToNow(new Date(content.createdAt), { addSuffix: true })}</div>
+            {content.strategyVersionNumber && <div>Strategy v{content.strategyVersionNumber}</div>}
+            <div className="font-mono opacity-60">{content.id.slice(0, 8)}...</div>
           </div>
         </div>
-      )}
-
-      {/* ── Content Overview ── */}
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-start justify-between gap-4 flex-wrap">
-            <div className="space-y-2">
-              <h1 className="text-lg font-bold leading-snug">{content.hook || content.concept}</h1>
-              <div className="flex items-center gap-2 flex-wrap">
-                <Badge variant="outline" className="capitalize">{content.format?.replace('_', ' ')}</Badge>
-                <Badge variant="outline" className="capitalize">{content.pillar?.replace(/_/g, ' ')}</Badge>
-                <Badge variant={statusConf.variant}>{statusConf.label}</Badge>
-                <span className="text-xs text-muted-foreground">v{content.versionNumber}</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <AssetIcon className={cn('h-4 w-4', assetConf.cls)} />
-                <span className={cn('text-sm font-medium', assetConf.cls)}>{assetConf.label}</span>
-              </div>
+        {hasFailed && (
+          <div className="flex items-start gap-3 rounded-xl bg-white/70 border border-orange-200 p-3.5">
+            <div className="h-8 w-8 rounded-full bg-orange-100 flex items-center justify-center shrink-0">
+              <AlertTriangle className="h-4 w-4 text-orange-500" />
             </div>
-            <div className="text-right text-xs text-muted-foreground space-y-0.5">
-              <div>Created {formatDistanceToNow(new Date(content.createdAt), { addSuffix: true })}</div>
-              {content.strategyVersionNumber && <div>Strategy v{content.strategyVersionNumber}</div>}
-              <div className="font-mono">{content.id.slice(0, 8)}…</div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-orange-800">Media Generation Failed</p>
+              {content.needsAttentionReason && <p className="text-xs text-orange-700 mt-0.5">{content.needsAttentionReason}</p>}
+              <p className="text-xs text-orange-600 mt-1 leading-relaxed">The AI prompt is preserved below. Copy it into Midjourney, DALL-E, or Stable Diffusion — then upload the result.</p>
             </div>
+            {hasPrompts && (
+              <Button size="sm" onClick={() => setActiveSection('media')} className="bg-orange-500 hover:bg-orange-600 text-white gap-1.5 shrink-0 text-xs h-8">
+                <Copy className="h-3.5 w-3.5" /> View Prompt
+              </Button>
+            )}
           </div>
-        </CardHeader>
-      </Card>
+        )}
+      </div>
 
-      {/* ── Section Tabs ── */}
-      <div className="flex gap-1.5 border-b pb-3">
-        {[
-          { key: 'media' as const, label: 'Media & Prompts', icon: ImagePlus, alert: hasFailed },
-          { key: 'overview' as const, label: 'Content Details', icon: FileText },
-          { key: 'history' as const, label: 'History', icon: History, count: attempts.length },
-          { key: 'versions' as const, label: 'Versions', icon: Eye, count: content.versions?.length },
-        ].map(({ key, label, icon: Icon, alert, count }) => (
+      {/* Tab Bar */}
+      <div className="flex gap-1 p-1 bg-muted/50 rounded-xl border border-border/50 w-fit">
+        {tabs.map(({ key, label, icon: Icon, alert, count }) => (
           <button
             key={key}
             onClick={() => setActiveSection(key)}
             className={cn(
-              'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors',
+              'flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200',
               activeSection === key
-                ? alert ? 'bg-orange-500 text-white border-orange-500' : 'bg-primary text-primary-foreground border-primary'
-                : alert ? 'border-orange-300 text-orange-600 hover:border-orange-400' : 'border-border text-muted-foreground hover:border-primary/40 hover:text-foreground',
+                ? alert ? 'bg-orange-500 text-white shadow-sm' : 'bg-background text-foreground shadow-sm border border-border/60'
+                : alert ? 'text-orange-600 hover:bg-orange-50' : 'text-muted-foreground hover:text-foreground hover:bg-background/60',
             )}
           >
             <Icon className="h-3.5 w-3.5" />
             {label}
-            {alert && <span className="h-1.5 w-1.5 rounded-full bg-white ml-0.5" />}
+            {alert && <span className="h-1.5 w-1.5 rounded-full bg-current" />}
             {count != null && count > 0 && !alert && (
-              <span className="text-[10px] opacity-70">({count})</span>
+              <span className={cn('text-[10px] px-1 rounded-full font-bold', activeSection === key ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground')}>
+                {count}
+              </span>
             )}
           </button>
         ))}
       </div>
 
-      {/* ── Media & Prompts Section ── */}
+      {/* MEDIA & PROMPTS */}
       {activeSection === 'media' && (
-        <AssetPanel
-          ideaId={content.id}
-          assets={content.assets || []}
-          prompts={content.prompts || []}
-          mediaRequirements={content.mediaRequirements || []}
-          attempts={attempts}
-          onRefresh={handleRefresh}
-        />
-      )}
-
-      {/* ── Content Details Section ── */}
-      {activeSection === 'overview' && (
-        <Card>
-          <CardContent className="pt-6 space-y-5">
-            <div>
-              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Concept</label>
-              <p className="text-sm mt-1">{content.concept}</p>
-            </div>
-            <div>
-              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Hook</label>
-              <p className="text-sm font-medium mt-1 leading-snug">{content.hook}</p>
-            </div>
-            {content.caption && (
-              <div>
-                <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Caption</label>
-                <div className="text-sm mt-1 whitespace-pre-wrap leading-relaxed rounded-lg bg-muted/30 p-3 border">
-                  {content.caption}
-                </div>
-                <CopyButton text={content.caption} label="Copy Caption" />
-              </div>
-            )}
-            {hashtags.length > 0 && (
-              <div>
-                <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Hashtags</label>
-                <div className="flex flex-wrap gap-1.5 mt-2">
-                  {hashtags.map((tag: string) => (
-                    <Badge key={tag} variant="secondary" className="text-xs">
-                      {tag.startsWith('#') ? tag : `#${tag}`}
-                    </Badge>
-                  ))}
-                </div>
-                <div className="mt-2">
-                  <CopyButton text={hashtags.map((t: string) => t.startsWith('#') ? t : `#${t}`).join(' ')} label="Copy All Hashtags" />
-                </div>
-              </div>
-            )}
-            {content.altText && (
-              <div>
-                <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Alt Text</label>
-                <p className="text-xs text-muted-foreground mt-1">{content.altText}</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ── History Section ── */}
-      {activeSection === 'history' && (
-        <GenerationHistorySection attempts={attempts} />
-      )}
-
-      {/* ── Versions Section ── */}
-      {activeSection === 'versions' && (
-        <div className="space-y-3">
-          {!content.versions?.length ? (
-            <Card>
-              <CardContent className="py-10 text-center">
-                <p className="text-sm text-muted-foreground">No version history available.</p>
-              </CardContent>
-            </Card>
-          ) : (
-            content.versions.map((v: any, i: number) => (
-              <Card key={v.id} className={cn(i === 0 && 'border-primary/30 bg-primary/5')}>
-                <CardHeader className="pb-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold">v{v.versionNumber}</span>
-                      {i === 0 && <Badge className="text-[10px]">Current</Badge>}
-                      <Badge variant="outline" className="text-[10px] capitalize">{v.changedBy}</Badge>
-                    </div>
-                    <span className="text-xs text-muted-foreground">
-                      {format(new Date(v.createdAt), 'MMM d, HH:mm')}
-                    </span>
-                  </div>
-                  {v.changeReason && <p className="text-xs text-muted-foreground">{v.changeReason}</p>}
-                </CardHeader>
-                {(v.hook || v.caption) && (
-                  <CardContent className="pt-0 space-y-2">
-                    {v.hook && (
-                      <div>
-                        <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Hook</span>
-                        <p className="text-xs mt-0.5 font-medium">{v.hook}</p>
-                      </div>
-                    )}
-                    {v.caption && (
-                      <div>
-                        <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Caption</span>
-                        <p className="text-xs mt-0.5 text-muted-foreground line-clamp-3">{v.caption}</p>
-                      </div>
-                    )}
-                  </CardContent>
+        <div className="grid grid-cols-1 lg:grid-cols-[360px,1fr] gap-6 items-start">
+          {/* Left: Media Panel */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-bold flex items-center gap-2">
+                <Image className="h-4 w-4 text-muted-foreground" />
+                Image Media
+                {imageReq?.status && (
+                  <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded-full border',
+                    imageReq.status === 'READY' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                    imageReq.status === 'FAILED' ? 'bg-red-50 text-red-700 border-red-200' :
+                    'bg-amber-50 text-amber-700 border-amber-200')}>
+                    {imageReq.status}
+                  </span>
                 )}
-              </Card>
-            ))
+              </h2>
+              {(imageReq?.status === 'FAILED' || !activeImage) && imagePrompts.length > 0 && (
+                <Button size="sm" variant="outline" onClick={() => retryAsset('image')} disabled={isRetrying} className="h-7 text-xs gap-1.5">
+                  {isRetrying ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+                  Retry
+                </Button>
+              )}
+            </div>
+
+            {activeImage?.storageUrl ? (
+              <MediaPreviewCard asset={activeImage} onReplace={() => setUploading(v => !v)} />
+            ) : (
+              <div className="rounded-2xl border-2 border-dashed border-border bg-gradient-to-br from-muted/30 to-muted/10 aspect-[4/3] flex flex-col items-center justify-center gap-3 text-center px-6">
+                <div className="h-12 w-12 rounded-full bg-muted/60 flex items-center justify-center">
+                  <ImagePlus className="h-6 w-6 text-muted-foreground/50" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-muted-foreground">No media yet</p>
+                  <p className="text-xs text-muted-foreground/60 mt-0.5">Upload manually or retry AI generation</p>
+                </div>
+                {!uploading && (
+                  <Button size="sm" variant="outline" onClick={() => setUploading(true)} className="gap-1.5 text-xs">
+                    <Upload className="h-3.5 w-3.5" /> Upload Manually
+                  </Button>
+                )}
+              </div>
+            )}
+
+            {uploading && imageReq && (
+              <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
+                <MediaUploader contentIdeaId={id} mediaRequirement={imageReq} onUploadComplete={() => { setUploading(false); handleRefresh(); }} />
+                <Button variant="ghost" size="sm" onClick={() => setUploading(false)} className="text-xs w-full">Cancel</Button>
+              </div>
+            )}
+
+            {hasError && !activeImage?.storageUrl && (
+              <div className="rounded-xl bg-red-50 border border-red-200 p-3.5 space-y-2">
+                <div className="flex items-center gap-2">
+                  <XCircle className="h-4 w-4 text-red-500 shrink-0" />
+                  <p className="text-sm font-semibold text-red-700">
+                    {ERROR_LABELS[latestAttempt?.errorCategory] ?? latestAttempt?.errorCategory ?? 'Generation Failed'}
+                  </p>
+                </div>
+                {latestAttempt?.errorMessage && (
+                  <p className="text-xs font-mono text-red-600 ml-6 bg-red-100/60 rounded px-2 py-1 border border-red-200">{latestAttempt.errorMessage}</p>
+                )}
+                <div className="flex items-center gap-1.5 ml-6 text-[10px] text-red-600">
+                  <Info className="h-3 w-3" />
+                  {attempts.length} attempt{attempts.length !== 1 ? 's' : ''} — Upload manually using the prompt on the right
+                </div>
+              </div>
+            )}
+
+            {videoPrompts.length > 0 && (
+              <div className="space-y-3 pt-2 border-t border-border/40">
+                <h2 className="text-sm font-bold flex items-center gap-2">
+                  <Film className="h-4 w-4 text-muted-foreground" />
+                  Video Media
+                  {videoReq?.status && (
+                    <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded-full border',
+                      videoReq.status === 'READY' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200')}>
+                      {videoReq.status}
+                    </span>
+                  )}
+                </h2>
+                {videoReq && <MediaUploader contentIdeaId={id} mediaRequirement={videoReq} onUploadComplete={handleRefresh} />}
+              </div>
+            )}
+          </div>
+
+          {/* Right: Prompts Panel */}
+          <div className="space-y-4">
+            {imagePrompts.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-purple-500" />
+                  <h2 className="text-sm font-bold">Image Prompts</h2>
+                  <span className="text-xs text-muted-foreground">({imagePrompts.length} version{imagePrompts.length !== 1 ? 's' : ''})</span>
+                </div>
+                {imagePrompts.map((p, i) => (
+                  <PromptCard key={p.id} prompt={p} isCurrent={i === 0} ideaId={id} onRefresh={handleRefresh} hasFailed={hasFailed} />
+                ))}
+              </div>
+            )}
+            {videoPrompts.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Film className="h-4 w-4 text-blue-500" />
+                  <h2 className="text-sm font-bold">Video Prompts</h2>
+                </div>
+                {videoPrompts.map((p, i) => (
+                  <PromptCard key={p.id} prompt={p} isCurrent={i === 0} ideaId={id} onRefresh={handleRefresh} hasFailed={false} />
+                ))}
+              </div>
+            )}
+            {imagePrompts.length === 0 && videoPrompts.length === 0 && (
+              <div className="rounded-2xl border-2 border-dashed border-border bg-muted/10 p-10 text-center">
+                <Sparkles className="h-8 w-8 text-muted-foreground/20 mx-auto mb-2" />
+                <p className="text-sm font-medium text-muted-foreground">No AI prompts yet</p>
+                <p className="text-xs text-muted-foreground/60 mt-1">Prompts are generated automatically when the agent creates content.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* CONTENT OVERVIEW */}
+      {activeSection === 'overview' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="rounded-2xl border border-border/60 bg-card p-5 space-y-2">
+            <SectionLabel>Concept</SectionLabel>
+            <p className="text-sm leading-relaxed">{content.concept}</p>
+          </div>
+          <div className="rounded-2xl border border-border/60 bg-card p-5 space-y-2">
+            <SectionLabel>Hook</SectionLabel>
+            <p className="text-sm font-semibold leading-snug">{content.hook}</p>
+          </div>
+          {content.caption && (
+            <div className="md:col-span-2 rounded-2xl border border-border/60 bg-card p-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <SectionLabel>Caption</SectionLabel>
+                <CopyButton text={content.caption} label="Copy Caption" size="xs" />
+              </div>
+              <div className="text-sm whitespace-pre-wrap leading-relaxed text-foreground/90 bg-muted/30 rounded-xl p-4 border border-border/40">
+                {content.caption}
+              </div>
+            </div>
+          )}
+          {hashtags.length > 0 && (
+            <div className="rounded-2xl border border-border/60 bg-card p-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <SectionLabel>Hashtags ({hashtags.length})</SectionLabel>
+                <CopyButton text={hashtags.map((t: string) => t.startsWith('#') ? t : '#' + t).join(' ')} label="Copy All" size="xs" />
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {hashtags.map((tag: string) => (
+                  <span key={tag} className="text-xs bg-primary/8 text-primary border border-primary/20 px-2 py-0.5 rounded-full font-medium">
+                    {tag.startsWith('#') ? tag : '#' + tag}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+          {content.altText && (
+            <div className="rounded-2xl border border-border/60 bg-card p-5 space-y-2">
+              <SectionLabel>Alt Text</SectionLabel>
+              <p className="text-xs text-muted-foreground leading-relaxed italic">"{content.altText}"</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* HISTORY */}
+      {activeSection === 'history' && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <History className="h-4 w-4 text-muted-foreground" />
+            <h2 className="text-sm font-bold">Generation History</h2>
+            {attempts.length > 0 && <span className="text-xs text-muted-foreground">{attempts.length} attempt{attempts.length !== 1 ? 's' : ''}</span>}
+          </div>
+          <GenerationHistorySection attempts={attempts} />
+        </div>
+      )}
+
+      {/* VERSIONS */}
+      {activeSection === 'versions' && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Eye className="h-4 w-4 text-muted-foreground" />
+            <h2 className="text-sm font-bold">Content Versions</h2>
+          </div>
+          {!content.versions?.length ? (
+            <div className="rounded-2xl border-2 border-dashed border-border bg-muted/10 p-10 text-center">
+              <Eye className="h-8 w-8 text-muted-foreground/20 mx-auto mb-2" />
+              <p className="text-sm text-muted-foreground">No version history yet</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {content.versions.map((v: any, i: number) => (
+                <div key={v.id} className={cn('rounded-2xl border overflow-hidden', i === 0 ? 'border-primary/25 bg-primary/5' : 'border-border/60 bg-card')}>
+                  <div className="flex items-center justify-between gap-3 px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold">v{v.versionNumber}</span>
+                      {i === 0 && <span className="text-[10px] font-semibold bg-primary text-primary-foreground px-1.5 py-0.5 rounded-full">Current</span>}
+                      <span className="text-xs capitalize text-muted-foreground border border-border/60 rounded-full px-2 py-0.5">{v.changedBy}</span>
+                      {v.changeReason && <span className="text-xs text-muted-foreground italic hidden sm:inline">— {v.changeReason}</span>}
+                    </div>
+                    <span className="text-[11px] text-muted-foreground shrink-0">{format(new Date(v.createdAt), 'MMM d, HH:mm')}</span>
+                  </div>
+                  {(v.hook || v.caption) && (
+                    <div className="px-4 pb-4 space-y-2 border-t border-border/40">
+                      {v.hook && <div className="pt-3"><SectionLabel>Hook</SectionLabel><p className="text-xs font-medium">{v.hook}</p></div>}
+                      {v.caption && <div><SectionLabel>Caption</SectionLabel><p className="text-xs text-muted-foreground line-clamp-2">{v.caption}</p></div>}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           )}
         </div>
       )}
