@@ -335,6 +335,15 @@ export default function ContentDetailPage({ params }: PageProps) {
   const [uploading, setUploading] = useState(false);
   const { isRetrying, retryAsset } = useAssetActions(id, () => { refresh(); refreshHistory(); });
 
+  // Schedule state
+  const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
+  const [scheduleModalMode, setScheduleModalMode] = useState<'new' | 'edit' | 'reschedule'>('new');
+  const {
+    schedule, recommendations, mediaStatus, isLoading: schedLoading,
+    generateRecommendation, acceptSchedule, editSchedule, cancelSchedule,
+    reschedule, retryPublish,
+  } = useContentSchedule(id);
+
   function handleRefresh() { refresh(); refreshHistory(); }
 
   if (isLoading) {
@@ -387,15 +396,6 @@ export default function ContentDetailPage({ params }: PageProps) {
     { key: 'history'  as const, label: 'History',         icon: History,  alert: false,     count: attempts.length },
     { key: 'versions' as const, label: 'Versions',        icon: Eye,      alert: false,     count: content.versions?.length },
   ];
-
-  // Schedule state
-  const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
-  const [scheduleModalMode, setScheduleModalMode] = useState<'new' | 'edit' | 'reschedule'>('new');
-  const {
-    schedule, recommendations, mediaStatus, isLoading: schedLoading,
-    generateRecommendation, acceptSchedule, editSchedule, cancelSchedule,
-    reschedule, retryPublish,
-  } = useContentSchedule(content.id);
 
   const latestRec = recommendations?.[0] ?? null;
 

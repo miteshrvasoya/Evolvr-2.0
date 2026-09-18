@@ -325,13 +325,13 @@ export class SchedulingService {
       errors.push('Social account not found');
     } else {
       const acc = account[0];
-      if (acc.connection_status !== 'connected') {
-        errors.push(`Instagram account is not connected (status: ${acc.connection_status})`);
+      if (acc.connectionStatus !== 'connected') {
+        errors.push(`Instagram account is not connected (status: ${acc.connectionStatus})`);
       }
-      if (!acc.access_token_encrypted) {
+      if (!acc.accessTokenEncrypted) {
         errors.push('Instagram access token is missing. Reconnect your account.');
       }
-      if (acc.token_expires_at && new Date(acc.token_expires_at) < new Date()) {
+      if (acc.tokenExpiresAt && new Date(acc.tokenExpiresAt) < new Date()) {
         errors.push('Instagram access token has expired. Reconnect your account.');
       }
     }
@@ -370,9 +370,9 @@ export class SchedulingService {
     // Content checks
     if (post.status === 'published')  errors.push('Content already published');
     if (post.status === 'cancelled')  errors.push('Schedule is cancelled');
-    if (post.schedule_status === 'CANCELLED') errors.push('Schedule is cancelled');
-    if (post.schedule_status === 'MISSED')    errors.push('Schedule was missed');
-    if (post.content_status === 'blocked')    errors.push('Content is blocked');
+    if (post.scheduleStatus === 'CANCELLED') errors.push('Schedule is cancelled');
+    if (post.scheduleStatus === 'MISSED')    errors.push('Schedule was missed');
+    if (post.contentStatus === 'blocked')    errors.push('Content is blocked');
     if (!post.caption?.trim())               errors.push('Caption is empty');
 
     // Media checks — must have ACTIVE + READY asset
@@ -380,7 +380,7 @@ export class SchedulingService {
       SELECT ca.id, ca.storage_url, ca.asset_status, mr.status AS req_status
       FROM content_assets ca
       JOIN media_requirements mr ON ca.media_requirement_id = mr.id
-      WHERE mr.content_idea_id = ${post.content_idea_id}
+      WHERE mr.content_idea_id = ${post.contentIdeaId}
         AND ca.asset_status = 'ACTIVE'
       LIMIT 1
     `;
@@ -388,10 +388,10 @@ export class SchedulingService {
       errors.push('No ACTIVE media asset found');
     } else {
       const asset = activeAsset[0];
-      if (asset.req_status !== 'READY') {
-        errors.push(`Media requirement is not READY (status: ${asset.req_status})`);
+      if (asset.reqStatus !== 'READY') {
+        errors.push(`Media requirement is not READY (status: ${asset.reqStatus})`);
       }
-      if (!asset.storage_url) {
+      if (!asset.storageUrl) {
         errors.push('Media storage URL is missing');
       }
     }
@@ -399,21 +399,21 @@ export class SchedulingService {
     // Instagram account checks
     const account = await sql`
       SELECT connection_status, access_token_encrypted, token_expires_at
-      FROM social_accounts WHERE id = ${post.social_account_id}
+      FROM social_accounts WHERE id = ${post.socialAccountId}
     `;
     if (!account.length) {
       errors.push('Social account not found');
     } else {
       const acc = account[0];
-      if (acc.connection_status !== 'connected') errors.push('Instagram account is disconnected');
-      if (!acc.access_token_encrypted) errors.push('Instagram access token is missing');
-      if (acc.token_expires_at && new Date(acc.token_expires_at) < new Date()) {
+      if (acc.connectionStatus !== 'connected') errors.push('Instagram account is disconnected');
+      if (!acc.accessTokenEncrypted) errors.push('Instagram access token is missing');
+      if (acc.tokenExpiresAt && new Date(acc.tokenExpiresAt) < new Date()) {
         errors.push('Instagram access token has expired');
       }
     }
 
     // Schedule time check
-    if (post.scheduled_at && new Date(post.scheduled_at) > new Date(Date.now() + 5 * 60 * 1000)) {
+    if (post.scheduledAt && new Date(post.scheduledAt) > new Date(Date.now() + 5 * 60 * 1000)) {
       errors.push('Scheduled time has not yet arrived');
     }
 
