@@ -179,8 +179,11 @@ function RunPromptsSection({ runId }: { runId: string }) {
                 <h4 className="font-semibold">{idea.concept}</h4>
                 <p className="text-sm text-muted-foreground line-clamp-2 mt-1">{idea.caption}</p>
               </div>
-              <span className="shrink-0 inline-flex items-center rounded-md bg-orange-50 px-2 py-1 text-xs font-medium text-orange-700 ring-1 ring-inset ring-orange-600/20">
-                {idea.lastFailure?.errorCategory?.replace(/_/g, ' ') || 'Generation Failed'}
+              <span className="shrink-0 max-w-xs text-right inline-flex flex-col gap-1 items-end rounded-md bg-orange-50 px-2 py-1 text-xs font-medium text-orange-700 ring-1 ring-inset ring-orange-600/20">
+                <span>{idea.lastFailure?.errorCategory?.replace(/_/g, ' ') || 'Generation Failed'}</span>
+                {(!idea.lastFailure && idea.needsAttentionReason) && (
+                  <span className="text-[10px] font-normal leading-tight opacity-80">{idea.needsAttentionReason}</span>
+                )}
               </span>
             </div>
             

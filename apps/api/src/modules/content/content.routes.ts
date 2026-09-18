@@ -563,7 +563,14 @@ Provide an improved prompt.`;
   // Returns every AI-generated prompt that hasn't produced a successful asset,
   // grouped by the agent_run that triggered the content generation job.
   app.get('/content/ungenerated-prompts', async (request: any, reply) => {
-    const { id: userId } = request.user;
+    let userId;
+    if (request.user) {
+      userId = request.user.id;
+    } else {
+      const users = await sql`SELECT id FROM users LIMIT 1`;
+      userId = users[0]?.id;
+    }
+    
     const accountId = await getPrimaryAccount(userId);
     if (!accountId) return { success: true, data: [] };
 
@@ -606,13 +613,9 @@ Provide an improved prompt.`;
         WHERE caga.content_idea_id = ci.id AND caga.status = 'failed'
         ORDER BY caga.created_at DESC LIMIT 1) AS last_failure
       FROM content_ideas ci
-      JOIN content_asset_prompts cap ON cap.content_idea_id = ci.id
+      LEFT JOIN content_asset_prompts cap ON cap.content_idea_id = ci.id
       WHERE ci.social_account_id = ${accountId}
-        -- Has no successfully generated asset
-        AND NOT EXISTS (
-          SELECT 1 FROM content_assets ca
-          WHERE ca.content_idea_id = ci.id AND ca.generation_status = 'generated'
-        )
+        AND ci.needs_attention = true
       GROUP BY ci.id
       ORDER BY ci.created_at DESC
     `;

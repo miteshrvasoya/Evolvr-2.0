@@ -185,7 +185,8 @@ function IdeaRow({
   if (!matchesSearch) return null;
 
   // Group prompts by assetType (keep only latest per type by default)
-  const promptsByType = idea.prompts.reduce<Record<string, UngeneratedPrompt[]>>((acc, p) => {
+  const prompts = idea.prompts || [];
+  const promptsByType = prompts.reduce<Record<string, UngeneratedPrompt[]>>((acc, p) => {
     const key = p.assetType;
     if (!acc[key]) acc[key] = [];
     acc[key].push(p);
@@ -210,8 +211,12 @@ function IdeaRow({
           <p className="text-sm font-semibold truncate">{idea.hook || idea.concept}</p>
           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
             <span className="text-[10px] text-muted-foreground capitalize">{FORMAT_LABELS[idea.format] || idea.format}</span>
-            <span className="text-muted-foreground/30">·</span>
-            <span className="text-[10px] text-muted-foreground capitalize">{idea.pillar?.replace(/_/g, ' ')}</span>
+            {idea.pillar && (
+              <>
+                <span className="text-muted-foreground/30">·</span>
+                <span className="text-[10px] text-muted-foreground capitalize">{idea.pillar?.replace(/_/g, ' ')}</span>
+              </>
+            )}
             {isFailed && (
               <>
                 <span className="text-muted-foreground/30">·</span>
@@ -225,7 +230,7 @@ function IdeaRow({
 
         <div className="flex items-center gap-2 shrink-0">
           <span className="text-[10px] font-semibold text-muted-foreground bg-muted/50 rounded-full px-2 py-0.5">
-            {idea.prompts.length} prompt{idea.prompts.length !== 1 ? 's' : ''}
+            {prompts.length} prompt{prompts.length !== 1 ? 's' : ''}
           </span>
           {idea.lastFailure?.errorCategory && (
             <Badge variant="destructive" className="text-[9px] px-1.5 py-0">
@@ -242,16 +247,24 @@ function IdeaRow({
       {expanded && (
         <div className="border-t px-4 py-4 space-y-4">
           {/* Failure alert */}
-          {idea.needsAttention && idea.lastFailure && (
+          {idea.needsAttention && (idea.lastFailure || idea.needsAttentionReason) && (
             <div className="rounded-lg bg-red-50 border border-red-200 dark:bg-red-950/20 dark:border-red-800 p-3 text-xs space-y-0.5">
-              <p className="font-semibold text-red-700 dark:text-red-400 flex items-center gap-1.5">
-                <XCircle className="h-3.5 w-3.5" />
-                {ERROR_LABELS[idea.lastFailure.errorCategory] || idea.lastFailure.errorCategory}
-                {idea.lastFailure.attemptNumber > 1 && ` · ${idea.lastFailure.attemptNumber} attempts`}
-              </p>
-              {idea.lastFailure.errorMessage && (
-                <p className="text-red-600 dark:text-red-500 font-mono ml-5">{idea.lastFailure.errorMessage}</p>
+              {idea.lastFailure && (
+                <p className="font-semibold text-red-700 dark:text-red-400 flex items-center gap-1.5">
+                  <XCircle className="h-3.5 w-3.5" />
+                  {ERROR_LABELS[idea.lastFailure.errorCategory] || idea.lastFailure.errorCategory}
+                  {idea.lastFailure.attemptNumber > 1 && ` · ${idea.lastFailure.attemptNumber} attempts`}
+                </p>
               )}
+              {!idea.lastFailure && idea.needsAttentionReason && (
+                <p className="font-semibold text-red-700 dark:text-red-400 flex items-center gap-1.5">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  Needs Attention
+                </p>
+              )}
+              <p className="text-red-600/80 dark:text-red-400/80 ml-5">
+                {idea.lastFailure?.errorMessage || idea.needsAttentionReason}
+              </p>
             </div>
           )}
 
