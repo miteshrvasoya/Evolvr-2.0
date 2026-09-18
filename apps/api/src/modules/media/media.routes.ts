@@ -18,6 +18,7 @@ export default async function mediaRoutes(app: FastifyInstance) {
     const { contentIdeaId, mediaRequirementId } = (data.fields as any);
     
     if (!contentIdeaId?.value || !mediaRequirementId?.value) {
+      data.file.resume(); // consume stream to prevent hang
       return reply.code(400).send({ error: 'Missing contentIdeaId or mediaRequirementId' });
     }
 
@@ -31,6 +32,7 @@ export default async function mediaRoutes(app: FastifyInstance) {
     `;
 
     if (!reqs.length) {
+      data.file.resume(); // consume stream to prevent hang
       return reply.code(404).send({ error: 'Media requirement not found or unauthorized' });
     }
 
@@ -48,7 +50,7 @@ export default async function mediaRoutes(app: FastifyInstance) {
       // 1. Mark existing active assets as REPLACED for this requirement
       await sql`
         UPDATE content_assets 
-        SET asset_status = 'REPLACED', updated_at = NOW() 
+        SET asset_status = 'REPLACED'
         WHERE media_requirement_id = ${req.id} AND asset_status = 'ACTIVE'
       `;
 
@@ -81,12 +83,12 @@ export default async function mediaRoutes(app: FastifyInstance) {
 
       // 5. Audit log
       await sql`
-        INSERT INTO agent_activity_logs (
-          id, agent_run_id, step_id, event_type, level, message, details, created_at
+        INSERT INTO agent_events (
+          agent_run_id, agent_step_id, event_type, level, message, metadata
         ) VALUES (
-          ${randomUUID()}, NULL, NULL, 'USER_MEDIA_UPLOADED', 'info', 
+          NULL, NULL, 'USER_MEDIA_UPLOADED', 'info', 
           'User manually uploaded media to satisfy requirement',
-          ${sql.json({ assetId, mediaRequirementId: req.id })}, NOW()
+          ${sql.json({ assetId, mediaRequirementId: req.id })}
         )
       `;
     });
@@ -133,13 +135,13 @@ export default async function mediaRoutes(app: FastifyInstance) {
     await sql.begin(async (sql) => {
       await sql`
         UPDATE content_assets 
-        SET asset_status = 'REPLACED', updated_at = NOW() 
+        SET asset_status = 'REPLACED'
         WHERE media_requirement_id = ${reqId} AND asset_status = 'ACTIVE'
       `;
       
       await sql`
         UPDATE content_assets 
-        SET asset_status = 'ACTIVE', updated_at = NOW() 
+        SET asset_status = 'ACTIVE'
         WHERE id = ${id}
       `;
     });

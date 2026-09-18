@@ -68,9 +68,9 @@ export function MediaUploader({ contentIdeaId, mediaRequirement, onUploadComplet
     setProgress(10); // Simulated start
 
     const formData = new FormData();
-    formData.append('file', file);
     formData.append('contentIdeaId', contentIdeaId);
     formData.append('mediaRequirementId', mediaRequirement.id);
+    formData.append('file', file);
 
     try {
       // Simulate progress for better UX
@@ -78,8 +78,10 @@ export function MediaUploader({ contentIdeaId, mediaRequirement, onUploadComplet
         setProgress(p => Math.min(p + 10, 90));
       }, 300);
 
-      const token = localStorage.getItem('auth_token');
-      const response = await fetch('/api/media/upload', {
+      const token = document.cookie.match(/(?:^|;\s*)auth_token=([^;]+)/)?.[1] || localStorage.getItem('auth_token');
+      const baseUrl = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001').replace('localhost', '127.0.0.1');
+      
+      const response = await fetch(`${baseUrl}/api/media/upload`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` },
         body: formData,
