@@ -106,6 +106,16 @@ function PromptCard({
             </span>
           </div>
 
+          {prompt.storageUrl && (
+            <div className="mt-4 rounded-lg overflow-hidden border bg-muted flex items-center justify-center">
+              {prompt.assetType === 'video_placeholder' || prompt.assetType === 'VIDEO' ? (
+                <video src={prompt.storageUrl.startsWith('http') ? prompt.storageUrl : `${(process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001').replace('localhost', '127.0.0.1')}${prompt.storageUrl}`} controls className="w-full max-h-[400px] object-contain" />
+              ) : (
+                <img src={prompt.storageUrl.startsWith('http') ? prompt.storageUrl : `${(process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001').replace('localhost', '127.0.0.1')}${prompt.storageUrl}`} alt={prompt.concept} className="w-full max-h-[400px] object-contain" />
+              )}
+            </div>
+          )}
+
           <div className="flex flex-wrap gap-2 pt-1">
             <CopyBtn text={prompt.promptText} label="Copy Prompt" />
             <Button

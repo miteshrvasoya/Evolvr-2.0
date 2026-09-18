@@ -23,11 +23,13 @@ export default async function promptRoutes(app: FastifyInstance) {
         cap.asset_type as "assetType", cap.source, cap.status, cap.created_at as "createdAt",
         ci.id as "contentIdeaId", ci.concept, ci.format,
         mr.id as "mediaRequirementId", mr.status as "mediaStatus",
-        sv.version_number as "strategyVersion"
+        sv.version_number as "strategyVersion",
+        ca.storage_url as "storageUrl"
       FROM content_asset_prompts cap
       JOIN content_ideas ci ON ci.id = cap.content_idea_id
       JOIN strategy_versions sv ON sv.id = ci.strategy_version_id
       LEFT JOIN media_requirements mr ON mr.id = cap.media_requirement_id
+      LEFT JOIN content_assets ca ON ca.media_requirement_id = mr.id AND ca.asset_status = 'ACTIVE'
       WHERE ci.social_account_id = ${accountId}
     `;
 

@@ -16,6 +16,7 @@ export interface PromptDto {
   mediaRequirementId: string;
   mediaStatus: string;
   strategyVersion: number;
+  storageUrl?: string;
 }
 
 export function usePrompts(status?: string, type?: string) {

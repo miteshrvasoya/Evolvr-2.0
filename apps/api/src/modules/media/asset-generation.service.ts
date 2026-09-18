@@ -239,7 +239,7 @@ export class AssetGenerationService {
              promptId,
              attemptNumber,
            })},
-           'generated', 'ai_generated', ${attemptId}, 'ACTIVE')
+           'generated', 'AI_GENERATED', ${attemptId}, 'ACTIVE')
       `;
 
       // Mark attempt as generated

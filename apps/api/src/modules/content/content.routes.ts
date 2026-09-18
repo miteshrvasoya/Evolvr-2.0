@@ -516,13 +516,13 @@ Provide an improved prompt.`;
     const filename = `manual_${ideaId}_${Date.now()}${ext}`;
     const storageUrl = await storageAdapter.saveFile(filename, buffer);
 
-    const existingAsset = await sql`SELECT id FROM content_assets WHERE content_idea_id = ${ideaId} AND source = 'manually_added' LIMIT 1`;
+    const existingAsset = await sql`SELECT id FROM content_assets WHERE content_idea_id = ${ideaId} AND source = 'MANUALLY_ADDED' LIMIT 1`;
     if (existingAsset.length > 0) {
       await sql`UPDATE content_assets SET storage_url = ${storageUrl}, mime_type = ${data.mimetype}, updated_at = NOW() WHERE id = ${existingAsset[0]!.id}`;
     } else {
       await sql`
         INSERT INTO content_assets (content_idea_id, asset_type, storage_url, mime_type, generation_status, source)
-        VALUES (${ideaId}, 'image', ${storageUrl}, ${data.mimetype}, 'generated', 'manually_added')
+        VALUES (${ideaId}, 'image', ${storageUrl}, ${data.mimetype}, 'generated', 'MANUALLY_ADDED')
       `;
     }
 
