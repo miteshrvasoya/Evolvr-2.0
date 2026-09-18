@@ -381,10 +381,14 @@ export default function ContentDetailPage({ params }: PageProps) {
   const assets      = content.assets ?? [];
   const prompts     = content.prompts ?? [];
   const mediaReqs   = content.mediaRequirements ?? [];
-  const activeImage = assets.find(a => a.assetType === 'image' && a.assetStatus === 'ACTIVE') || assets.find(a => a.assetType === 'image');
-  const imageReq    = mediaReqs.find(r => r.mediaType === 'image');
-  const videoReq    = mediaReqs.find(r => r.mediaType === 'video_placeholder');
-  const imagePrompts = prompts.filter(p => p.assetType === 'image');
+  const activeImages = assets.filter(a => (a.assetType === 'image' || a.assetType === 'carousel' || a.assetType === 'CAROUSEL') && a.assetStatus === 'ACTIVE');
+  if (activeImages.length === 0) {
+    const fallback = assets.find(a => a.assetType === 'image' || a.assetType === 'carousel');
+    if (fallback) activeImages.push(fallback);
+  }
+  const imageReq    = mediaReqs.find(r => r.mediaType === 'image' || r.mediaType === 'CAROUSEL' || r.mediaType === 'carousel');
+  const videoReq    = mediaReqs.find(r => r.mediaType === 'video_placeholder' || r.mediaType === 'video' || r.mediaType === 'VIDEO');
+  const imagePrompts = prompts.filter(p => p.assetType === 'image' || p.assetType === 'carousel');
   const videoPrompts = prompts.filter(p => p.assetType === 'video_placeholder' || p.assetType === 'VIDEO');
   const latestAttempt = attempts[0];
   const hasError = latestAttempt?.status === 'failed';
@@ -440,33 +444,13 @@ export default function ContentDetailPage({ params }: PageProps) {
             <div className="font-mono opacity-60">{content.id.slice(0, 8)}...</div>
           </div>
         </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            {content.platform === 'instagram' && (
-              <Badge variant="secondary" className="bg-pink-50 text-pink-600 hover:bg-pink-100 border-pink-200 shadow-sm gap-1.5 px-3 py-1">
-                <Instagram className="h-3.5 w-3.5" /> Instagram
-              </Badge>
-            )}
-            <Button size="sm" variant="outline" onClick={handleRefresh} disabled={isRefreshing} className="h-9 gap-2 shadow-sm text-xs font-semibold">
-              <RotateCcw className={cn("h-3.5 w-3.5", isRefreshing && "animate-spin")} />
-              Refresh
-            </Button>
-            {content.status === 'draft' && (
-              <Button size="sm" className="h-9 gap-2 shadow-sm text-xs font-semibold">
-                <CheckCircle2 className="h-4 w-4" /> Approve Content
-              </Button>
-            )}
-          </div>
-        </div>
-
-        {/* Action Required Banner */}
         {hasFailed && (
-          <div className="mt-6 rounded-xl border border-orange-200 bg-gradient-to-r from-orange-50/80 to-amber-50/80 p-4 flex items-start gap-4 shadow-sm">
-            <div className="h-10 w-10 rounded-full bg-orange-100 flex items-center justify-center shrink-0 border border-orange-200">
-              <AlertTriangle className="h-5 w-5 text-orange-600" />
+          <div className="flex items-start gap-3 rounded-xl bg-white/70 border border-orange-200 p-3.5">
+            <div className="h-8 w-8 rounded-full bg-orange-100 flex items-center justify-center shrink-0">
+              <AlertTriangle className="h-4 w-4 text-orange-500" />
             </div>
-            <div className="flex-1 space-y-1">
-              <h3 className="font-bold text-orange-900 text-sm">Action Required: Media Generation Failed</h3>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-orange-800">Media Generation Failed</p>
               {content.needsAttentionReason && <p className="text-xs text-orange-700 mt-0.5">{content.needsAttentionReason}</p>}
               <p className="text-xs text-orange-600 mt-1 leading-relaxed">The AI prompt is preserved below. Copy it into Midjourney, DALL-E, or Stable Diffusion — then upload the result.</p>
             </div>
