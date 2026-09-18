@@ -213,12 +213,14 @@ function AssetPanel({
   assets,
   prompts,
   mediaRequirements,
+  attempts,
   onRefresh,
 }: {
   ideaId: string;
   assets: any[];
   prompts: ContentPrompt[];
   mediaRequirements: any[];
+  attempts: any[];
   onRefresh: () => void;
 }) {
   const [uploading, setUploading] = useState(false);
@@ -229,6 +231,14 @@ function AssetPanel({
   
   const imageRequirement = mediaRequirements?.find(r => r.mediaType === 'image');
   const videoRequirement = mediaRequirements?.find(r => r.mediaType === 'video_placeholder');
+
+  const imagePrompts = prompts.filter(p => p.assetType === 'image');
+  const videoPrompts = prompts.filter(p => p.assetType === 'video_placeholder' || p.assetType === 'VIDEO');
+  const isFailed = imageRequirement?.status === 'FAILED' || imageRequirement?.status === 'PENDING';
+
+  // Extract latest attempt info for errors since failed attempts aren't in `assets`
+  const latestImageAttempt = attempts.find(a => a.assetType === 'image');
+  const latestVideoAttempt = attempts.find(a => a.assetType === 'video_placeholder' || a.assetType === 'VIDEO');
 
   return (
     <div className="space-y-6">
@@ -296,16 +306,16 @@ function AssetPanel({
         )}
 
         {/* Error detail */}
-        {activeImage?.errorCategory && (
+        {(activeImage?.errorCategory || (latestImageAttempt?.status === 'failed' && latestImageAttempt?.errorCategory)) && (
           <div className="rounded-lg bg-red-50 border border-red-200 dark:bg-red-950/20 dark:border-red-800 p-3 space-y-1">
             <div className="flex items-center gap-2">
               <XCircle className="h-4 w-4 text-red-500 shrink-0" />
               <p className="text-xs font-semibold text-red-700 dark:text-red-400">
-                {ERROR_LABELS[activeImage.errorCategory]?.label || activeImage.errorCategory}
+                {ERROR_LABELS[activeImage?.errorCategory || latestImageAttempt?.errorCategory]?.label || (activeImage?.errorCategory || latestImageAttempt?.errorCategory)}
               </p>
             </div>
-            {activeImage.errorMessage && (
-              <p className="text-xs text-red-600 dark:text-red-500 ml-6 font-mono">{activeImage.errorMessage}</p>
+            {(activeImage?.errorMessage || latestImageAttempt?.errorMessage) && (
+              <p className="text-xs text-red-600 dark:text-red-500 ml-6 font-mono">{activeImage?.errorMessage || latestImageAttempt?.errorMessage}</p>
             )}
           </div>
         )}
@@ -399,17 +409,33 @@ function GenerationHistorySection({ attempts }: { attempts: any[] }) {
                 {a.completedAt ? format(new Date(a.completedAt), 'MMM d, HH:mm') : 'In progress'}
               </span>
             </div>
-            {a.errorMessage && (
-              <p className="text-red-600 dark:text-red-400 font-mono ml-5">{a.errorMessage}</p>
-            )}
-            {a.promptText && (
-              <div className="ml-5 space-y-1">
-                <span className="text-muted-foreground uppercase tracking-wider text-[9px] font-semibold">Prompt used</span>
-                <p className="font-mono bg-muted/40 rounded p-1.5 text-[10px] line-clamp-2">{a.promptText}</p>
+            <div className="flex flex-col gap-1 ml-5 mt-2 text-[10px] text-muted-foreground">
+              {a.errorMessage && (
+                <p className="text-red-600 dark:text-red-400 font-mono text-xs">{a.errorMessage}</p>
+              )}
+              {a.errorCategory && a.status === 'failed' && (
+                <p>Category: <span className="font-semibold text-red-500">{a.errorCategory}</span></p>
+              )}
+              
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-1 border-t pt-2 border-border/50">
+                {a.provider && <p>Provider: <span className="font-medium text-foreground">{a.provider}</span></p>}
+                {a.model && <p>Model: <span className="font-medium text-foreground">{a.model}</span></p>}
+                {a.durationMs != null && <p>Duration: <span className="font-medium text-foreground">{(a.durationMs / 1000).toFixed(2)}s</span></p>}
+                {a.idempotencyKey && <p className="col-span-2 truncate">Key: <span className="font-mono text-foreground">{a.idempotencyKey}</span></p>}
               </div>
-            )}
-            {a.durationMs && (
-              <p className="text-muted-foreground ml-5">Duration: {(a.durationMs / 1000).toFixed(1)}s</p>
+            </div>
+
+            {a.promptText && (
+              <div className="ml-5 space-y-1 mt-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground uppercase tracking-wider text-[9px] font-semibold">Prompt used</span>
+                  <div className="flex gap-1.5">
+                    {a.promptVersion && <Badge variant="outline" className="text-[9px] h-4 py-0 px-1">v{a.promptVersion}</Badge>}
+                    {a.promptSource && <Badge variant="outline" className="text-[9px] h-4 py-0 px-1 capitalize">{a.promptSource.replace('_', ' ')}</Badge>}
+                  </div>
+                </div>
+                <p className="font-mono bg-muted/40 rounded p-2 text-[10px] line-clamp-3 overflow-hidden">{a.promptText}</p>
+              </div>
             )}
           </div>
         ))}
@@ -420,11 +446,11 @@ function GenerationHistorySection({ attempts }: { attempts: any[] }) {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 interface PageProps {
-  params: Promise<{ id: string }>;
+  params: { id: string };
 }
 
 export default function ContentDetailPage({ params }: PageProps) {
-  const { id } = use(params);
+  const { id } = params;
   const { content, isLoading, refresh } = useContentDetail(id);
   const { attempts, refresh: refreshHistory } = useGenerationHistory(id);
   const [activeSection, setActiveSection] = useState<'overview' | 'media' | 'history' | 'versions'>('media');
@@ -572,6 +598,7 @@ export default function ContentDetailPage({ params }: PageProps) {
           assets={content.assets || []}
           prompts={content.prompts || []}
           mediaRequirements={content.mediaRequirements || []}
+          attempts={attempts}
           onRefresh={handleRefresh}
         />
       )}

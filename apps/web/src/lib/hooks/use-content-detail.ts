@@ -19,6 +19,14 @@ export interface ContentAsset {
   createdAt: string;
 }
 
+export interface MediaRequirement {
+  id: string;
+  contentIdeaId: string;
+  mediaType: string;
+  status: string;
+  createdAt: string;
+}
+
 export interface ContentPrompt {
   id: string;
   contentIdeaId: string;
@@ -89,6 +97,7 @@ export interface ContentDetail {
   assets: ContentAsset[];
   prompts: ContentPrompt[];
   versions: ContentVersion[];
+  mediaRequirements?: MediaRequirement[];
 }
 
 const fetcher = (url: string) => apiClient.get<any>(url);
@@ -101,7 +110,7 @@ export function useContentDetail(ideaId: string | null) {
   );
 
   return {
-    content: data?.data as ContentDetail | undefined,
+    content: data as ContentDetail | undefined,
     error,
     isLoading,
     refresh: mutate,
@@ -116,7 +125,7 @@ export function useGenerationHistory(ideaId: string | null) {
   );
 
   return {
-    attempts: (data?.data ?? []) as GenerationAttempt[],
+    attempts: (data ?? []) as GenerationAttempt[],
     error,
     isLoading,
     refresh: mutate,
