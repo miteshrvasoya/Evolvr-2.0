@@ -90,7 +90,8 @@ export default async function contentRoutes(app: FastifyInstance) {
 
   // ── Needs Attention ──────────────────────────────────────────────────────────
   app.get('/content/needs-attention', async (request: any, reply) => {
-    const { id: userId } = request.user;
+    const userId = request.user?.id;
+    if (!userId) return reply.status(401).send({ error: 'Unauthorized', message: 'Missing user' });
     const accountId = await getPrimaryAccount(userId);
     if (!accountId) return { success: true, data: [], count: 0 };
 
@@ -102,6 +103,8 @@ export default async function contentRoutes(app: FastifyInstance) {
       ORDER BY ci.updated_at DESC
       LIMIT 50
     `;
+    
+    console.log('[needs-attention] RETURNING items:', items.length, 'accountId:', accountId);
 
     return { success: true, data: items, count: items.length };
   });
@@ -563,13 +566,8 @@ Provide an improved prompt.`;
   // Returns every AI-generated prompt that hasn't produced a successful asset,
   // grouped by the agent_run that triggered the content generation job.
   app.get('/content/ungenerated-prompts', async (request: any, reply) => {
-    let userId;
-    if (request.user) {
-      userId = request.user.id;
-    } else {
-      const users = await sql`SELECT id FROM users LIMIT 1`;
-      userId = users[0]?.id;
-    }
+    const userId = request.user?.id;
+    if (!userId) return reply.status(401).send({ error: 'Unauthorized', message: 'Missing user' });
     
     const accountId = await getPrimaryAccount(userId);
     if (!accountId) return { success: true, data: [] };
@@ -690,11 +688,19 @@ Provide an improved prompt.`;
       return new Date(b.run.startedAt).getTime() - new Date(a.run.startedAt).getTime();
     });
 
-    return {
-      success: true,
-      data: result,
+    const totalPrompts = rawIdeas.reduce((sum: number, idea: any) => sum + (idea.prompts?.length ?? 0), 0);
+
+    const responseData = {
+      groups: result,
       totalIdeas: rawIdeas.length,
-      totalPrompts: rawIdeas.reduce((sum: number, idea: any) => sum + (idea.prompts?.length ?? 0), 0),
+      totalPrompts
+    };
+    
+    console.log('[ungenerated-prompts] RETURNING:', { success: true, data: { totalIdeas: rawIdeas.length, groupsLength: result.length }, accountId });
+
+    return { 
+      success: true, 
+      data: responseData
     };
   });
 }
