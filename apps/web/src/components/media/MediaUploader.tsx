@@ -17,52 +17,72 @@ interface MediaUploaderProps {
 }
 
 export function MediaUploader({ contentIdeaId, mediaRequirement, onUploadComplete, className }: MediaUploaderProps) {
-  const [file, setFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [files, setFiles] = useState<{ file: File; previewUrl: string }[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [progress, setProgress] = useState(0);
 
   const isVideo = mediaRequirement.mediaType === 'VIDEO' || mediaRequirement.mediaType === 'video_placeholder';
+  const isCarousel = mediaRequirement.mediaType === 'CAROUSEL';
+  
   const acceptedTypes = isVideo 
     ? { 'video/mp4': ['.mp4'], 'video/quicktime': ['.mov'] }
     : { 'image/jpeg': ['.jpg', '.jpeg'], 'image/png': ['.png'], 'image/webp': ['.webp'] };
 
+  const maxFiles = isCarousel ? 10 : 1;
+
   const onDrop = useCallback((acceptedFiles: File[]) => {
     if (acceptedFiles.length === 0) return;
     
-    const selected = acceptedFiles[0];
-    
-    // Size validation (e.g., 50MB for video, 10MB for image)
     const maxSize = isVideo ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
-    if (selected.size > maxSize) {
+    const validFiles = acceptedFiles.filter(f => f.size <= maxSize);
+
+    if (validFiles.length < acceptedFiles.length) {
       toast({
         variant: 'destructive',
-        title: 'File too large',
-        description: `Maximum file size is ${isVideo ? '50MB' : '10MB'}.`
+        title: 'Files too large',
+        description: `Maximum file size is ${isVideo ? '50MB' : '10MB'}. Some files were ignored.`
       });
-      return;
     }
 
-    setFile(selected);
-    const url = URL.createObjectURL(selected);
-    setPreviewUrl(url);
-  }, [isVideo]);
+    if (validFiles.length === 0) return;
+
+    const newFiles = validFiles.map(file => ({
+      file,
+      previewUrl: URL.createObjectURL(file)
+    }));
+
+    setFiles(prev => {
+      const combined = [...prev, ...newFiles];
+      if (combined.length > maxFiles) {
+        toast({
+          variant: 'destructive',
+          title: 'Too many files',
+          description: `You can only upload up to ${maxFiles} files.`
+        });
+        return combined.slice(0, maxFiles);
+      }
+      return combined;
+    });
+  }, [isVideo, maxFiles]);
 
   const { getRootProps, getInputProps, isDragActive, isDragReject } = useDropzone({
     onDrop,
     accept: acceptedTypes,
-    maxFiles: 1,
+    maxFiles,
   });
 
-  const removeFile = () => {
-    setFile(null);
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    setPreviewUrl(null);
+  const removeFile = (index: number) => {
+    setFiles(prev => {
+      const newFiles = [...prev];
+      URL.revokeObjectURL(newFiles[index].previewUrl);
+      newFiles.splice(index, 1);
+      return newFiles;
+    });
     setProgress(0);
   };
 
   const uploadFile = async () => {
-    if (!file) return;
+    if (files.length === 0) return;
 
     setIsUploading(true);
     setProgress(10); // Simulated start
@@ -70,10 +90,12 @@ export function MediaUploader({ contentIdeaId, mediaRequirement, onUploadComplet
     const formData = new FormData();
     formData.append('contentIdeaId', contentIdeaId);
     formData.append('mediaRequirementId', mediaRequirement.id);
-    formData.append('file', file);
+    
+    files.forEach((f) => {
+      formData.append('file', f.file);
+    });
 
     try {
-      // Simulate progress for better UX
       const progressInterval = setInterval(() => {
         setProgress(p => Math.min(p + 10, 90));
       }, 300);
@@ -99,7 +121,7 @@ export function MediaUploader({ contentIdeaId, mediaRequirement, onUploadComplet
       
       toast({
         title: 'Upload Successful',
-        description: 'Your media has been attached to the content.',
+        description: `Your media has been attached to the content.`,
       });
 
       onUploadComplete(data.assetId, data.storageUrl);
@@ -115,30 +137,43 @@ export function MediaUploader({ contentIdeaId, mediaRequirement, onUploadComplet
     }
   };
 
-  if (file && previewUrl) {
+  if (files.length > 0) {
     return (
       <div className={cn("rounded-lg border bg-card p-4 space-y-4", className)}>
-        <div className="relative aspect-video rounded-md overflow-hidden bg-muted flex items-center justify-center group">
-          {isVideo ? (
-            <video src={previewUrl} className="w-full h-full object-contain" controls />
-          ) : (
-            <img src={previewUrl} alt="Preview" className="w-full h-full object-contain" />
-          )}
-          
-          {!isUploading && (
-            <button 
-              onClick={removeFile}
-              className="absolute top-2 right-2 p-1.5 rounded-full bg-black/50 text-white hover:bg-black/80 transition-colors opacity-0 group-hover:opacity-100"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
+        <div className={cn("grid gap-4", files.length > 1 ? "grid-cols-2" : "grid-cols-1")}>
+          {files.map((f, i) => (
+            <div key={i} className="relative aspect-video rounded-md overflow-hidden bg-muted flex items-center justify-center group">
+              {isVideo ? (
+                <video src={f.previewUrl} className="w-full h-full object-contain" controls />
+              ) : (
+                <img src={f.previewUrl} alt="Preview" className="w-full h-full object-contain" />
+              )}
+              
+              {!isUploading && (
+                <button 
+                  onClick={() => removeFile(i)}
+                  className="absolute top-2 right-2 p-1.5 rounded-full bg-black/50 text-white hover:bg-black/80 transition-colors opacity-0 group-hover:opacity-100"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          ))}
         </div>
+
+        {isCarousel && files.length < maxFiles && !isUploading && (
+          <div {...getRootProps()} className="rounded-md border-2 border-dashed p-4 text-center cursor-pointer hover:bg-accent/50 transition-colors">
+            <input {...getInputProps()} />
+            <p className="text-xs text-muted-foreground">+ Add more files ({files.length}/{maxFiles})</p>
+          </div>
+        )}
 
         <div className="flex items-center justify-between">
           <div className="min-w-0 flex-1 mr-4">
-            <p className="text-sm font-medium truncate">{file.name}</p>
-            <p className="text-xs text-muted-foreground">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+            <p className="text-sm font-medium truncate">{files.length} file{files.length !== 1 ? 's' : ''} selected</p>
+            <p className="text-xs text-muted-foreground">
+              {(files.reduce((acc, f) => acc + f.file.size, 0) / 1024 / 1024).toFixed(2)} MB total
+            </p>
           </div>
           <Button onClick={uploadFile} disabled={isUploading} size="sm">
             {isUploading ? (
@@ -174,10 +209,11 @@ export function MediaUploader({ contentIdeaId, mediaRequirement, onUploadComplet
         {isVideo ? <Video className="h-6 w-6 text-muted-foreground" /> : <ImageIcon className="h-6 w-6 text-muted-foreground" />}
       </div>
       <p className="text-sm font-medium mb-1">
-        {isDragActive ? 'Drop file here' : 'Drag & drop media here'}
+        {isDragActive ? 'Drop file(s) here' : 'Drag & drop media here'}
       </p>
       <p className="text-xs text-muted-foreground">
-        or click to browse {isVideo ? '(MP4, MOV)' : '(JPG, PNG, WebP)'} up to {isVideo ? '50MB' : '10MB'}
+        or click to browse {isVideo ? '(MP4, MOV)' : '(JPG, PNG, WebP)'} up to {isVideo ? '50MB' : '10MB'}. 
+        {isCarousel && ` You can select up to ${maxFiles} files.`}
       </p>
     </div>
   );

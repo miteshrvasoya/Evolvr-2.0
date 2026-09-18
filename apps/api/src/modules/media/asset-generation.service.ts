@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
 import { sql } from '../../db/client.js';
 import { getMediaProvider } from './index.js';
-import { LocalStorageAdapter } from '../storage/local.adapter.js';
+import { getStorageAdapter } from '../storage/index.js';
 import { AssetErrorCategory, MediaGenerationError } from './media.interface.js';
 
 export interface PersistPromptParams {
@@ -75,7 +75,9 @@ export function shouldRetryError(category: AssetErrorCategory, attemptNumber: nu
 }
 
 export class AssetGenerationService {
-  private storageAdapter = new LocalStorageAdapter();
+  private get storageAdapter() {
+    return getStorageAdapter();
+  }
 
   /**
    * Persist an AI-generated or user-edited prompt as a first-class entity.

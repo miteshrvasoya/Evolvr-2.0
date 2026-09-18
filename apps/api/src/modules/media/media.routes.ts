@@ -1,24 +1,39 @@
 import { FastifyInstance } from 'fastify';
 import { sql } from '../../db/client.js';
-import { LocalStorageAdapter } from '../storage/local.adapter.js';
+import { getStorageAdapter } from '../storage/index.js';
 import { randomUUID } from 'crypto';
 import path from 'path';
 
 export default async function mediaRoutes(app: FastifyInstance) {
-  const storageAdapter = new LocalStorageAdapter();
+  const storageAdapter = getStorageAdapter();
 
   app.addHook('onRequest', app.authenticate);
 
   app.post('/media/upload', async (request, reply) => {
-    const data = await request.file();
-    if (!data) {
+    const parts = request.parts();
+    const files: any[] = [];
+    const fields: Record<string, string> = {};
+
+    for await (const part of parts) {
+      if (part.type === 'file') {
+        const buffer = await part.toBuffer();
+        files.push({
+          filename: part.filename,
+          mimetype: part.mimetype,
+          buffer
+        });
+      } else {
+        fields[part.fieldname] = (part as any).value;
+      }
+    }
+
+    if (files.length === 0) {
       return reply.code(400).send({ error: 'No file uploaded' });
     }
 
-    const { contentIdeaId, mediaRequirementId } = (data.fields as any);
+    const { contentIdeaId, mediaRequirementId } = fields;
     
-    if (!contentIdeaId?.value || !mediaRequirementId?.value) {
-      data.file.resume(); // consume stream to prevent hang
+    if (!contentIdeaId || !mediaRequirementId) {
       return reply.code(400).send({ error: 'Missing contentIdeaId or mediaRequirementId' });
     }
 
@@ -28,23 +43,20 @@ export default async function mediaRoutes(app: FastifyInstance) {
       FROM media_requirements mr
       JOIN content_ideas ci ON ci.id = mr.content_idea_id
       JOIN social_accounts sa ON sa.id = ci.social_account_id
-      WHERE mr.id = ${mediaRequirementId.value} AND sa.user_id = ${(request as any).user.id}
+      WHERE mr.id = ${mediaRequirementId} AND sa.user_id = ${(request as any).user.id}
     `;
 
     if (!reqs.length) {
-      data.file.resume(); // consume stream to prevent hang
       return reply.code(404).send({ error: 'Media requirement not found or unauthorized' });
     }
 
     const req = reqs[0];
-    const buffer = await data.toBuffer();
     
-    // Determine extension
-    const ext = path.extname(data.filename) || (data.mimetype.includes('video') ? '.mp4' : '.jpg');
-    const filename = `media_manual_${req.id}_${Date.now()}${ext}`;
+    if (req.mediaType !== 'CAROUSEL' && files.length > 1) {
+      return reply.code(400).send({ error: 'Only Carousel posts support multiple files' });
+    }
 
-    const storageUrl = await storageAdapter.saveFile(filename, buffer);
-    const assetId = randomUUID();
+    const uploadedAssets: { assetId: string; storageUrl: string }[] = [];
 
     await sql.begin(async (sql) => {
       // 1. Mark existing active assets as REPLACED for this requirement
@@ -54,15 +66,25 @@ export default async function mediaRoutes(app: FastifyInstance) {
         WHERE media_requirement_id = ${req.id} AND asset_status = 'ACTIVE'
       `;
 
-      // 2. Insert new asset
-      await sql`
-        INSERT INTO content_assets
-          (id, content_idea_id, media_requirement_id, asset_type, storage_url, mime_type, 
-           generation_status, source, asset_status, uploaded_by)
-        VALUES
-          (${assetId}, ${req.contentIdeaId}, ${req.id}, ${req.mediaType}, ${storageUrl}, ${data.mimetype},
-           'generated', 'USER_UPLOADED', 'ACTIVE', ${(request as any).user.id})
-      `;
+      for (const file of files) {
+        // Determine extension
+        const ext = path.extname(file.filename) || (file.mimetype.includes('video') ? '.mp4' : '.jpg');
+        const filename = `media_manual_${req.id}_${randomUUID()}${ext}`;
+  
+        const storageUrl = await storageAdapter.saveFile(filename, file.buffer);
+        const assetId = randomUUID();
+  
+        // 2. Insert new asset
+        await sql`
+          INSERT INTO content_assets
+            (id, content_idea_id, media_requirement_id, asset_type, storage_url, mime_type, 
+             generation_status, source, asset_status, uploaded_by)
+          VALUES
+            (${assetId}, ${req.contentIdeaId}, ${req.id}, ${req.mediaType}, ${storageUrl}, ${file.mimetype},
+             'generated', 'USER_UPLOADED', 'ACTIVE', ${(request as any).user.id})
+        `;
+        uploadedAssets.push({ assetId, storageUrl });
+      }
 
       // 3. Mark requirement as READY
       await sql`
@@ -88,15 +110,17 @@ export default async function mediaRoutes(app: FastifyInstance) {
         ) VALUES (
           NULL, NULL, 'USER_MEDIA_UPLOADED', 'info', 
           'User manually uploaded media to satisfy requirement',
-          ${sql.json({ assetId, mediaRequirementId: req.id })}
+          ${sql.json({ assets: uploadedAssets, mediaRequirementId: req.id })}
         )
       `;
     });
 
-    // Note: Auto-scheduling trigger logic will be handled later in the flow
-    // or by a webhook/background job depending on the exact architecture.
-
-    return { success: true, assetId, storageUrl };
+    return { 
+      success: true, 
+      assetId: uploadedAssets[0].assetId, // For backwards compatibility
+      storageUrl: uploadedAssets[0].storageUrl, // For backwards compatibility
+      assets: uploadedAssets // Array format
+    };
   });
 
   app.get('/media/requirements/:id', async (request, reply) => {

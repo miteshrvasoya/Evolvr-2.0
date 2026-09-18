@@ -430,23 +430,39 @@ export default function ContentDetailPage({ params }: PageProps) {
                 {assetConf.label}
               </div>
               <span className="text-xs px-2.5 py-1 rounded-full bg-muted border border-border/60 capitalize font-medium">{content.format?.replace('_', ' ')}</span>
-              <span className="text-xs px-2.5 py-1 rounded-full bg-muted border border-border/60 capitalize font-medium">{content.pillar?.replace(/_/g, ' ')}</span>
-              <span className="text-xs text-muted-foreground">v{content.versionNumber}</span>
-            </div>
+              </Badge>
+            </h1>
+            <p className="text-sm text-muted-foreground max-w-2xl leading-relaxed">
+              Created {formatDistanceToNow(new Date(content.createdAt), { addSuffix: true })}
+            </p>
           </div>
-          <div className="text-right text-[11px] text-muted-foreground space-y-0.5 shrink-0">
-            <div className="flex items-center gap-1 justify-end"><Calendar className="h-3 w-3" /> {formatDistanceToNow(new Date(content.createdAt), { addSuffix: true })}</div>
-            {content.strategyVersionNumber && <div>Strategy v{content.strategyVersionNumber}</div>}
-            <div className="font-mono opacity-60">{content.id.slice(0, 8)}...</div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {content.platform === 'instagram' && (
+              <Badge variant="secondary" className="bg-pink-50 text-pink-600 hover:bg-pink-100 border-pink-200 shadow-sm gap-1.5 px-3 py-1">
+                <Instagram className="h-3.5 w-3.5" /> Instagram
+              </Badge>
+            )}
+            <Button size="sm" variant="outline" onClick={handleRefresh} disabled={isRefreshing} className="h-9 gap-2 shadow-sm text-xs font-semibold">
+              <RotateCcw className={cn("h-3.5 w-3.5", isRefreshing && "animate-spin")} />
+              Refresh
+            </Button>
+            {content.status === 'draft' && (
+              <Button size="sm" className="h-9 gap-2 shadow-sm text-xs font-semibold">
+                <CheckCircle2 className="h-4 w-4" /> Approve Content
+              </Button>
+            )}
           </div>
         </div>
+
+        {/* Action Required Banner */}
         {hasFailed && (
-          <div className="flex items-start gap-3 rounded-xl bg-white/70 border border-orange-200 p-3.5">
-            <div className="h-8 w-8 rounded-full bg-orange-100 flex items-center justify-center shrink-0">
-              <AlertTriangle className="h-4 w-4 text-orange-500" />
+          <div className="mt-6 rounded-xl border border-orange-200 bg-gradient-to-r from-orange-50/80 to-amber-50/80 p-4 flex items-start gap-4 shadow-sm">
+            <div className="h-10 w-10 rounded-full bg-orange-100 flex items-center justify-center shrink-0 border border-orange-200">
+              <AlertTriangle className="h-5 w-5 text-orange-600" />
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-orange-800">Media Generation Failed</p>
+            <div className="flex-1 space-y-1">
+              <h3 className="font-bold text-orange-900 text-sm">Action Required: Media Generation Failed</h3>
               {content.needsAttentionReason && <p className="text-xs text-orange-700 mt-0.5">{content.needsAttentionReason}</p>}
               <p className="text-xs text-orange-600 mt-1 leading-relaxed">The AI prompt is preserved below. Copy it into Midjourney, DALL-E, or Stable Diffusion — then upload the result.</p>
             </div>
@@ -486,7 +502,7 @@ export default function ContentDetailPage({ params }: PageProps) {
 
       {/* MEDIA & PROMPTS */}
       {activeSection === 'media' && (
-        <div className="grid grid-cols-1 lg:grid-cols-[360px,1fr] gap-6 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-[360px,1fr] xl:grid-cols-[480px,1fr] gap-6 items-start">
           {/* Left: Media Panel */}
           <div className="space-y-4">
             <div className="flex items-center justify-between">
@@ -502,7 +518,7 @@ export default function ContentDetailPage({ params }: PageProps) {
                   </span>
                 )}
               </h2>
-              {(imageReq?.status === 'FAILED' || !activeImage) && imagePrompts.length > 0 && (
+              {(imageReq?.status === 'FAILED' || activeImages.length === 0) && imagePrompts.length > 0 && (
                 <Button size="sm" variant="outline" onClick={() => retryAsset('image')} disabled={isRetrying} className="h-7 text-xs gap-1.5">
                   {isRetrying ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
                   Retry
@@ -510,8 +526,12 @@ export default function ContentDetailPage({ params }: PageProps) {
               )}
             </div>
 
-            {activeImage?.storageUrl ? (
-              <MediaPreviewCard asset={activeImage} onReplace={() => setUploading(v => !v)} />
+            {activeImages.length > 0 ? (
+              <div className={cn("grid gap-4", activeImages.length > 1 ? "grid-cols-2" : "grid-cols-1")}>
+                {activeImages.map((img, i) => (
+                  <MediaPreviewCard key={img.id || i} asset={img} onReplace={() => setUploading(v => !v)} />
+                ))}
+              </div>
             ) : (
               <div className="rounded-2xl border-2 border-dashed border-border bg-gradient-to-br from-muted/30 to-muted/10 aspect-[4/3] flex flex-col items-center justify-center gap-3 text-center px-6">
                 <div className="h-12 w-12 rounded-full bg-muted/60 flex items-center justify-center">
@@ -536,7 +556,7 @@ export default function ContentDetailPage({ params }: PageProps) {
               </div>
             )}
 
-            {hasError && !activeImage?.storageUrl && (
+            {hasError && activeImages.length === 0 && (
               <div className="rounded-xl bg-red-50 border border-red-200 p-3.5 space-y-2">
                 <div className="flex items-center gap-2">
                   <XCircle className="h-4 w-4 text-red-500 shrink-0" />

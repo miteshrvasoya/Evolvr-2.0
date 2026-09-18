@@ -99,29 +99,99 @@ export class InstagramAdapter {
     };
   }
 
-  async publishPost(accessToken: string, platformAccountId: string, mediaUrl: string, caption: string, mediaType: string = 'image') {
-    // 1. Create Media Container
-    // Documentation states use /<IG_ID>/media, but /me/media works when using user token
-    const createUrl = `${this.baseApiUrl}/me/media`;
-    const createParams = new URLSearchParams({
-      caption: caption,
+  async publishPost(accessToken: string, platformAccountId: string, mediaUrls: string[], caption: string, mediaType: string = 'image') {
+    if (!mediaUrls || mediaUrls.length === 0) {
+      throw new Error('No media URLs provided for publishing');
+    }
+
+    const isVideo = mediaType === 'video_placeholder' || mediaType === 'video' || mediaType === 'reel' || mediaType === 'reels';
+    const isCarousel = mediaUrls.length > 1;
+
+    let creationId: string;
+
+    if (isCarousel) {
+      // 1a. Create Item Containers for each media URL
+      const itemCreationIds: string[] = [];
+      for (const url of mediaUrls) {
+        const itemUrl = `${this.baseApiUrl}/me/media`;
+        const itemParams = new URLSearchParams({
+          access_token: accessToken,
+          is_carousel_item: 'true',
+        });
+        
+        // Guess if item is video based on extension, otherwise default to image
+        if (url.includes('.mp4') || url.includes('.mov') || isVideo) {
+          itemParams.append('media_type', 'VIDEO');
+          itemParams.append('video_url', url);
+        } else {
+          itemParams.append('image_url', url);
+        }
+
+        const { response: itemRes, data: itemData } = await this.fetchWithLog(`${itemUrl}?${itemParams.toString()}`, { method: 'POST' });
+        if (!itemRes.ok) throw new Error(itemData.error?.message || 'Failed to create carousel item container');
+        itemCreationIds.push(itemData.id);
+      }
+
+      // Wait for all item containers to finish processing (videos can take time)
+      for (const itemId of itemCreationIds) {
+        await this.waitForContainer(itemId, accessToken);
+      }
+
+      // 1b. Create Carousel Container
+      const carouselUrl = `${this.baseApiUrl}/me/media`;
+      const carouselParams = new URLSearchParams({
+        caption: caption,
+        access_token: accessToken,
+        media_type: 'CAROUSEL',
+        children: itemCreationIds.join(','),
+      });
+
+      const { response: carRes, data: carData } = await this.fetchWithLog(`${carouselUrl}?${carouselParams.toString()}`, { method: 'POST' });
+      if (!carRes.ok) throw new Error(carData.error?.message || 'Failed to create carousel container');
+      
+      creationId = carData.id;
+
+    } else {
+      // Single Media
+      const createUrl = `${this.baseApiUrl}/me/media`;
+      const createParams = new URLSearchParams({
+        caption: caption,
+        access_token: accessToken,
+      });
+
+      if (isVideo) {
+        createParams.append('media_type', 'REELS');
+        createParams.append('video_url', mediaUrls[0]);
+      } else {
+        createParams.append('image_url', mediaUrls[0]);
+      }
+
+      const { response: createRes, data: createData } = await this.fetchWithLog(`${createUrl}?${createParams.toString()}`, { method: 'POST' });
+      if (!createRes.ok) throw new Error(createData.error?.message || 'Failed to create media container');
+      
+      creationId = createData.id;
+    }
+
+    // 2. Poll Status to wait until FINISHED
+    await this.waitForContainer(creationId, accessToken);
+
+    // 3. Publish
+    const publishUrl = `${this.baseApiUrl}/me/media_publish`;
+    const publishParams = new URLSearchParams({
+      creation_id: creationId,
       access_token: accessToken,
     });
 
-    const isVideo = mediaType === 'video_placeholder' || mediaType === 'video' || mediaType === 'reel' || mediaType === 'reels';
-    if (isVideo) {
-      createParams.append('media_type', 'REELS');
-      createParams.append('video_url', mediaUrl);
-    } else {
-      createParams.append('image_url', mediaUrl);
-    }
+    const { response: publishRes, data: publishData } = await this.fetchWithLog(`${publishUrl}?${publishParams.toString()}`, { method: 'POST' });
+    if (!publishRes.ok) throw new Error(publishData.error?.message || 'Failed to publish media');
 
-    const { response: createRes, data: createData } = await this.fetchWithLog(`${createUrl}?${createParams.toString()}`, { method: 'POST' });
-    if (!createRes.ok) throw new Error(createData.error?.message || 'Failed to create media container');
+    return {
+      platformPostId: publishData.id,
+      status: 'published',
+    };
+  }
 
-    const creationId = createData.id;
-
-    // 2. Poll Status to wait until FINISHED
+  private async waitForContainer(creationId: string, accessToken: string) {
     let isReady = false;
     let attempts = 0;
     while (!isReady && attempts < 15) { // Try for ~45 seconds
@@ -138,28 +208,12 @@ export class InstagramAdapter {
         } else if (status === 'ERROR' || status === 'EXPIRED') {
           throw new Error(`Media container processing failed with status: ${status}`);
         }
-        // If IN_PROGRESS or PUBLISHED, keep waiting/proceeding
       }
     }
 
     if (!isReady) {
       throw new Error('Media container timed out waiting for FINISHED status');
     }
-
-    // 3. Publish
-    const publishUrl = `${this.baseApiUrl}/me/media_publish`;
-    const publishParams = new URLSearchParams({
-      creation_id: creationId,
-      access_token: accessToken,
-    });
-
-    const { response: publishRes, data: publishData } = await this.fetchWithLog(`${publishUrl}?${publishParams.toString()}`, { method: 'POST' });
-    if (!publishRes.ok) throw new Error(publishData.error?.message || 'Failed to publish media');
-
-    return {
-      platformPostId: publishData.id,
-      status: 'published',
-    };
   }
 
   async getPostInsights(accessToken: string, platformPostId: string) {

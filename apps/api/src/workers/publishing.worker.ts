@@ -184,38 +184,48 @@ export const createPublishingWorker = () => {
         // ── 3. Fetch Post + Media + Account ───────────────────────────────────
         const posts = await sql`
           SELECT p.id, p.caption, p.social_account_id,
-            ca.storage_url, ca.asset_type,
-            p.idempotency_key
+            p.idempotency_key,
+            COALESCE(
+              json_agg(
+                json_build_object(
+                  'storage_url', ca.storage_url,
+                  'asset_type', ca.asset_type
+                )
+              ) FILTER (WHERE ca.id IS NOT NULL), 
+              '[]'
+            ) as assets
           FROM posts p
           LEFT JOIN content_ideas ci ON p.content_idea_id = ci.id
           LEFT JOIN media_requirements mr ON mr.content_idea_id = ci.id
           LEFT JOIN content_assets ca ON ca.media_requirement_id = mr.id AND ca.asset_status = 'ACTIVE'
           WHERE p.id = ${resolvedPostId}
-          LIMIT 1
+          GROUP BY p.id
         `;
         const post = posts[0];
         if (!post) throw Object.assign(new Error('Post not found'), { code: 'INVALID_CONTENT' });
-        if (!post.storageUrl) throw Object.assign(new Error('No active media asset found'), { code: 'INVALID_MEDIA' });
+        
+        const assets: { storage_url: string; asset_type: string }[] = post.assets || [];
+        if (assets.length === 0) throw Object.assign(new Error('No active media assets found'), { code: 'INVALID_MEDIA' });
 
-        console.log(`🖼️ [PublishingWorker] Asset fetched. Media URL: ${post.storageUrl}`);
-        await log(`Publishing post ${resolvedPostId} — media: ${post.storageUrl}`);
+        const mediaUrls = assets.map(a => a.storage_url).filter(Boolean);
+        if (mediaUrls.length === 0) throw Object.assign(new Error('Media assets missing storage URLs'), { code: 'INVALID_MEDIA' });
 
-        // ── 4. Resolve public media URL ───────────────────────────────────────
-        let finalMediaUrl = post.storageUrl;
-        const isLocal = finalMediaUrl.includes('localhost') || finalMediaUrl.startsWith('./') || finalMediaUrl.startsWith('/storage') || !finalMediaUrl.startsWith('http');
+        console.log(`🖼️ [PublishingWorker] Assets fetched. Media URLs: ${mediaUrls.join(', ')}`);
+        await log(`Publishing post ${resolvedPostId} — media count: ${mediaUrls.length}`);
 
-        if (env.SIMULATION_MODE || (isLocal && !env.STORAGE_PUBLIC_URL)) {
-          const isVideo = post.assetType === 'video_placeholder' || post.assetType === 'video' || post.assetType === 'reel' || post.assetType === 'reels';
-          await log(`Simulation mode / local storage — using placeholder ${isVideo ? 'video' : 'image'}`);
-          finalMediaUrl = isVideo 
+        // ── 4. Resolve public media URLs ───────────────────────────────────────
+        let finalMediaUrls = [...mediaUrls];
+
+        if (env.SIMULATION_MODE) {
+          const isVideo = assets[0].asset_type === 'video_placeholder' || assets[0].asset_type === 'video' || assets[0].asset_type === 'reel' || assets[0].asset_type === 'reels';
+          await log(`Simulation mode — using placeholder ${isVideo ? 'video' : 'image'}`);
+          const placeholderUrl = isVideo 
             ? 'https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4' 
             : 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?auto=format&fit=crop&w=800&q=80';
-        } else if (isLocal && env.STORAGE_PUBLIC_URL) {
-          const filename = finalMediaUrl.split('/').pop();
-          finalMediaUrl = `${env.STORAGE_PUBLIC_URL}/storage/${filename}`;
+          finalMediaUrls = [placeholderUrl];
         }
 
-        console.log(`🌐 [PublishingWorker] Final resolved media URL for Instagram: ${finalMediaUrl}`);
+        console.log(`🌐 [PublishingWorker] Final resolved media URLs for Instagram: ${finalMediaUrls.join(', ')}`);
 
         // ── 5. Fetch Credentials ──────────────────────────────────────────────
         const accounts = await sql`
