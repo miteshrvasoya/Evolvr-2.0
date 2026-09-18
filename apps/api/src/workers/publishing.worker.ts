@@ -101,7 +101,10 @@ export const createPublishingWorker = () => {
       const attemptNumber = job.attemptsMade + 1;
       const maxAttempts   = job.opts.attempts ?? 5;
 
-      console.log(`[PublishingWorker] Job ${job.id} | Post ${resolvedPostId} | Attempt ${attemptNumber}/${maxAttempts}`);
+      console.log(`\n======================================================`);
+      console.log(`🚀 [PublishingWorker] WAKING UP FOR JOB: ${job.id}`);
+      console.log(`📅 Post ID: ${resolvedPostId} | Attempt ${attemptNumber}/${maxAttempts}`);
+      console.log(`======================================================\n`);
 
       const tracker = resolvedAgentRunId ? new AgentRunTracker(resolvedAgentRunId) : null;
       let stepId: string | null = null;
@@ -132,6 +135,7 @@ export const createPublishingWorker = () => {
         }
 
         // ── 2. Pre-publish validation ─────────────────────────────────────────
+        console.log(`🔍 [PublishingWorker] Starting strict pre-publish validation for post ${resolvedPostId}...`);
         const validation = await schedulingService.validatePrePublish(resolvedPostId);
         if (!validation.valid) {
           // Check if content is already published (idempotency)
@@ -175,6 +179,8 @@ export const createPublishingWorker = () => {
           }
         }
 
+        console.log(`✅ [PublishingWorker] Pre-publish validation PASSED. Proceeding to fetch assets...`);
+
         // ── 3. Fetch Post + Media + Account ───────────────────────────────────
         const posts = await sql`
           SELECT p.id, p.caption, p.social_account_id,
@@ -191,19 +197,25 @@ export const createPublishingWorker = () => {
         if (!post) throw Object.assign(new Error('Post not found'), { code: 'INVALID_CONTENT' });
         if (!post.storageUrl) throw Object.assign(new Error('No active media asset found'), { code: 'INVALID_MEDIA' });
 
+        console.log(`🖼️ [PublishingWorker] Asset fetched. Media URL: ${post.storageUrl}`);
         await log(`Publishing post ${resolvedPostId} — media: ${post.storageUrl}`);
 
         // ── 4. Resolve public media URL ───────────────────────────────────────
         let finalMediaUrl = post.storageUrl;
-        const isLocal = finalMediaUrl.includes('localhost') || finalMediaUrl.startsWith('./');
+        const isLocal = finalMediaUrl.includes('localhost') || finalMediaUrl.startsWith('./') || finalMediaUrl.startsWith('/storage') || !finalMediaUrl.startsWith('http');
 
         if (env.SIMULATION_MODE || (isLocal && !env.STORAGE_PUBLIC_URL)) {
-          await log('Simulation mode / local storage — using placeholder image');
-          finalMediaUrl = 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?auto=format&fit=crop&w=800&q=80';
+          const isVideo = post.assetType === 'video_placeholder' || post.assetType === 'video' || post.assetType === 'reel' || post.assetType === 'reels';
+          await log(`Simulation mode / local storage — using placeholder ${isVideo ? 'video' : 'image'}`);
+          finalMediaUrl = isVideo 
+            ? 'https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4' 
+            : 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?auto=format&fit=crop&w=800&q=80';
         } else if (isLocal && env.STORAGE_PUBLIC_URL) {
           const filename = finalMediaUrl.split('/').pop();
           finalMediaUrl = `${env.STORAGE_PUBLIC_URL}/storage/${filename}`;
         }
+
+        console.log(`🌐 [PublishingWorker] Final resolved media URL for Instagram: ${finalMediaUrl}`);
 
         // ── 5. Fetch Credentials ──────────────────────────────────────────────
         const accounts = await sql`
@@ -226,6 +238,7 @@ export const createPublishingWorker = () => {
         }
 
         // ── 7. Publish ────────────────────────────────────────────────────────
+        console.log(`🔑 [PublishingWorker] Credentials verified. Decrypting access token...`);
         const accessToken = decryptToken(account.accessTokenEncrypted);
         const igAdapter   = getInstagramAdapter();
         const start       = Date.now();
@@ -238,18 +251,22 @@ export const createPublishingWorker = () => {
         }
 
         try {
+          console.log(`📡 [PublishingWorker] Making request to Instagram Graph API...`);
           if (!env.SIMULATION_MODE) {
             const result = await igAdapter.publishPost(
               accessToken,
               account.platformAccountId,
               finalMediaUrl,
               post.caption || '',
+              post.assetType
             );
             platformPostId = result.platformPostId;
+            console.log(`🎉 [PublishingWorker] Instagram API SUCCESS! Platform Post ID: ${platformPostId}`);
           } else {
             await new Promise(r => setTimeout(r, 1500));
           }
         } catch (igErr: any) {
+          console.error(`❌ [PublishingWorker] Instagram API FAILED:`, igErr.message);
           statusCode = igErr.status ?? 500;
           const { code: errCode, retryable, backoffMs } = classifyError(igErr);
           const latencyMs = Date.now() - start;
@@ -298,6 +315,8 @@ export const createPublishingWorker = () => {
           await tracker.logToolCall(stepId, `Published → ${platformPostId}`, 'instagram_graph_api', 'https://graph.instagram.com/me/media_publish', 200, latencyMs);
           await tracker.logEvent(stepId, 'PUBLISH_SUCCEEDED', 'info', `Successfully published post ${platformPostId}`);
         }
+
+        console.log(`✨ [PublishingWorker] Post ${resolvedPostId} successfully published and saved to database!`);
 
         // ── 8. Update DB on success ───────────────────────────────────────────
         await sql.begin(async (trx) => {

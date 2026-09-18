@@ -57,9 +57,9 @@ export class LoggerService {
       console.error('[LoggerService] Failed to insert API log:', err);
     });
 
-    console.log("------------------------------------------------------------------------------");
+    // console.log("------------------------------------------------------------------------------");
     // console.log("API CALL", data);
-    console.log("------------------------------------------------------------------------------");
+    // console.log("------------------------------------------------------------------------------");
     if (data.direction === 'outward') {
       const statusColor = data.statusCode >= 400 ? '\x1b[31m' : '\x1b[32m'; // Red or Green
       const resetColor = '\x1b[0m';

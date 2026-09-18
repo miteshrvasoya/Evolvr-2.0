@@ -99,22 +99,52 @@ export class InstagramAdapter {
     };
   }
 
-  async publishPost(accessToken: string, platformAccountId: string, mediaUrl: string, caption: string) {
+  async publishPost(accessToken: string, platformAccountId: string, mediaUrl: string, caption: string, mediaType: string = 'image') {
     // 1. Create Media Container
+    // Documentation states use /<IG_ID>/media, but /me/media works when using user token
     const createUrl = `${this.baseApiUrl}/me/media`;
     const createParams = new URLSearchParams({
-      image_url: mediaUrl,
       caption: caption,
       access_token: accessToken,
     });
+
+    const isVideo = mediaType === 'video_placeholder' || mediaType === 'video' || mediaType === 'reel' || mediaType === 'reels';
+    if (isVideo) {
+      createParams.append('media_type', 'REELS');
+      createParams.append('video_url', mediaUrl);
+    } else {
+      createParams.append('image_url', mediaUrl);
+    }
 
     const { response: createRes, data: createData } = await this.fetchWithLog(`${createUrl}?${createParams.toString()}`, { method: 'POST' });
     if (!createRes.ok) throw new Error(createData.error?.message || 'Failed to create media container');
 
     const creationId = createData.id;
 
-    // 2. Poll Status (Simplified here. In prod, wait until status_code=FINISHED)
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    // 2. Poll Status to wait until FINISHED
+    let isReady = false;
+    let attempts = 0;
+    while (!isReady && attempts < 15) { // Try for ~45 seconds
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      attempts++;
+      
+      const statusUrl = `${this.baseGraphUrl}/${creationId}?fields=status_code&access_token=${accessToken}`;
+      const { response: statusRes, data: statusData } = await this.fetchWithLog(statusUrl);
+      
+      if (statusRes.ok && statusData.status_code) {
+        const status = statusData.status_code;
+        if (status === 'FINISHED') {
+          isReady = true;
+        } else if (status === 'ERROR' || status === 'EXPIRED') {
+          throw new Error(`Media container processing failed with status: ${status}`);
+        }
+        // If IN_PROGRESS or PUBLISHED, keep waiting/proceeding
+      }
+    }
+
+    if (!isReady) {
+      throw new Error('Media container timed out waiting for FINISHED status');
+    }
 
     // 3. Publish
     const publishUrl = `${this.baseApiUrl}/me/media_publish`;

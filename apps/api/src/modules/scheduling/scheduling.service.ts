@@ -631,33 +631,34 @@ export class SchedulingService {
     scheduledAt: Date,
   ): Promise<{ publishJobId: string; bullmqJobId: string }> {
     const idempotencyKey = `publish:${accountId}:${postId}`;
-    const publishJobId = randomUUID();
+    let publishJobId = randomUUID();
+    const bullmqJobId = `publish-${postId}-${Date.now()}`; // Unique jobId so BullMQ always accepts it
     const delay = Math.max(0, scheduledAt.getTime() - Date.now());
 
-    // Upsert publish_job (idempotent)
+    // Upsert publish_job (idempotent for the DB record)
     const existing = await sql`
-      SELECT id, bullmq_job_id FROM publish_jobs WHERE idempotency_key = ${idempotencyKey}
+      SELECT id FROM publish_jobs WHERE idempotency_key = ${idempotencyKey}
     `;
 
     if (existing.length > 0) {
-      // Job already exists — return existing IDs
-      return {
-        publishJobId: existing[0].id,
-        bullmqJobId: existing[0].bullmqJobId ?? 'existing',
-      };
+      publishJobId = existing[0].id;
+      // Update existing record with new status and bullmq_job_id
+      await sql`
+        UPDATE publish_jobs
+        SET status = 'PENDING', bullmq_job_id = ${bullmqJobId}, updated_at = NOW()
+        WHERE id = ${publishJobId}
+      `;
+    } else {
+      await sql`
+        INSERT INTO publish_jobs (
+          id, post_id, content_idea_id, account_id,
+          status, idempotency_key, bullmq_job_id
+        ) VALUES (
+          ${publishJobId}, ${postId}, ${contentIdeaId}, ${accountId},
+          'PENDING', ${idempotencyKey}, ${bullmqJobId}
+        )
+      `;
     }
-
-    const bullmqJobId = `publish-${postId}`;
-
-    await sql`
-      INSERT INTO publish_jobs (
-        id, post_id, content_idea_id, account_id,
-        status, idempotency_key, bullmq_job_id
-      ) VALUES (
-        ${publishJobId}, ${postId}, ${contentIdeaId}, ${accountId},
-        'PENDING', ${idempotencyKey}, ${bullmqJobId}
-      )
-    `;
 
     // Enqueue BullMQ delayed job
     await queues.publishing.add(
@@ -685,13 +686,21 @@ export class SchedulingService {
    */
   async cancelPublishJob(postId: string): Promise<void> {
     try {
-      const bullmqJobId = `publish-${postId}`;
-      const job = await queues.publishing.getJob(bullmqJobId);
-      if (job) {
-        const state = await job.getState();
-        // Only cancel if it hasn't started processing
-        if (state === 'delayed' || state === 'waiting') {
-          await job.remove();
+      const publishJobs = await sql`
+        SELECT bullmq_job_id FROM publish_jobs
+        WHERE post_id = ${postId} AND status IN ('PENDING', 'RETRYING')
+        LIMIT 1
+      `;
+      const bullmqJobId = publishJobs[0]?.bullmqJobId;
+
+      if (bullmqJobId) {
+        const job = await queues.publishing.getJob(bullmqJobId);
+        if (job) {
+          const state = await job.getState();
+          // Only cancel if it hasn't started processing
+          if (state === 'delayed' || state === 'waiting') {
+            await job.remove();
+          }
         }
       }
       // Update publish_jobs record
