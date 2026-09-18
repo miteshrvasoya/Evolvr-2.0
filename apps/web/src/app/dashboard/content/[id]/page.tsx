@@ -430,12 +430,16 @@ export default function ContentDetailPage({ params }: PageProps) {
                 {assetConf.label}
               </div>
               <span className="text-xs px-2.5 py-1 rounded-full bg-muted border border-border/60 capitalize font-medium">{content.format?.replace('_', ' ')}</span>
-              </Badge>
-            </h1>
-            <p className="text-sm text-muted-foreground max-w-2xl leading-relaxed">
-              Created {formatDistanceToNow(new Date(content.createdAt), { addSuffix: true })}
-            </p>
+              <span className="text-xs px-2.5 py-1 rounded-full bg-muted border border-border/60 capitalize font-medium">{content.pillar?.replace(/_/g, ' ')}</span>
+              <span className="text-xs text-muted-foreground">v{content.versionNumber}</span>
+            </div>
           </div>
+          <div className="text-right text-[11px] text-muted-foreground space-y-0.5 shrink-0">
+            <div className="flex items-center gap-1 justify-end"><Calendar className="h-3 w-3" /> {formatDistanceToNow(new Date(content.createdAt), { addSuffix: true })}</div>
+            {content.strategyVersionNumber && <div>Strategy v{content.strategyVersionNumber}</div>}
+            <div className="font-mono opacity-60">{content.id.slice(0, 8)}...</div>
+          </div>
+        </div>
 
           <div className="flex items-center gap-2 shrink-0">
             {content.platform === 'instagram' && (
