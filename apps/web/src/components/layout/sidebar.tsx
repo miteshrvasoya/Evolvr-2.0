@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import {
   BarChart3,
   Bot,
+  CalendarClock,
   Calendar,
   AlertTriangle,
   Library,
@@ -35,6 +36,15 @@ const navItems = [
       { href: '/dashboard/content', label: 'Library' },
       { href: '/dashboard/content?filter=needs_attention', label: 'Needs Attention', alertKey: 'needsAttention' },
       { href: '/dashboard/content/prompts', label: 'Ungenerated Prompts' },
+    ],
+  },
+  {
+    label: 'Schedule',
+    icon: CalendarClock,
+    href: '/dashboard/schedule',
+    subItems: [
+      { href: '/dashboard/schedule', label: 'Calendar' },
+      { href: '/dashboard/schedule/preferences', label: 'Preferences' },
     ],
   },
   { href: '/dashboard/strategy', label: 'Strategy', icon: Target },

@@ -8,7 +8,10 @@ import {
   type ContentPrompt,
 } from '@/lib/hooks/use-content-detail';
 import { useAssetActions } from '@/lib/hooks/use-asset-actions';
+import { useContentSchedule } from '@/lib/hooks/use-schedule';
 import { MediaUploader } from '@/components/media/MediaUploader';
+import { ScheduleRecommendationCard, ActiveSchedulePanel, ScheduleVersionHistory } from '@/components/scheduling/schedule-cards';
+import { ScheduleModal } from '@/components/scheduling/schedule-modal';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -380,9 +383,21 @@ export default function ContentDetailPage({ params }: PageProps) {
   const tabs = [
     { key: 'media'    as const, label: 'Media & Prompts', icon: Image,    alert: hasFailed, count: null },
     { key: 'overview' as const, label: 'Content',         icon: FileText, alert: false,     count: null },
+    { key: 'schedule' as const, label: 'Schedule',        icon: Calendar, alert: false,     count: null },
     { key: 'history'  as const, label: 'History',         icon: History,  alert: false,     count: attempts.length },
     { key: 'versions' as const, label: 'Versions',        icon: Eye,      alert: false,     count: content.versions?.length },
   ];
+
+  // Schedule state
+  const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
+  const [scheduleModalMode, setScheduleModalMode] = useState<'new' | 'edit' | 'reschedule'>('new');
+  const {
+    schedule, recommendations, mediaStatus, isLoading: schedLoading,
+    generateRecommendation, acceptSchedule, editSchedule, cancelSchedule,
+    reschedule, retryPublish,
+  } = useContentSchedule(content.id);
+
+  const latestRec = recommendations?.[0] ?? null;
 
   return (
     <div className="max-w-6xl space-y-6 pb-20">
@@ -686,6 +701,105 @@ export default function ContentDetailPage({ params }: PageProps) {
             </div>
           )}
         </div>
+      )}
+
+      {/* SCHEDULE */}
+      {activeSection === 'schedule' && (
+        <div className="space-y-5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-violet-400" />
+              <h2 className="text-sm font-bold">Publishing Schedule</h2>
+            </div>
+            {!schedule && !schedLoading && (
+              <Button
+                size="sm" variant="outline"
+                onClick={() => generateRecommendation()}
+                disabled={schedLoading}
+                className="gap-1.5 text-xs"
+              >
+                <Sparkles className="h-3.5 w-3.5 text-violet-400" />
+                Get AI Recommendation
+              </Button>
+            )}
+          </div>
+
+          {schedLoading && (
+            <div className="flex items-center justify-center py-10">
+              <Loader2 className="h-5 w-5 animate-spin text-violet-400" />
+              <span className="ml-2 text-sm text-muted-foreground">Loading schedule…</span>
+            </div>
+          )}
+
+          {!schedLoading && !schedule && !latestRec && (
+            <div className="rounded-2xl border-2 border-dashed border-border bg-muted/10 p-10 text-center">
+              <Calendar className="h-8 w-8 text-muted-foreground/20 mx-auto mb-3" />
+              <p className="text-sm font-semibold">No schedule yet</p>
+              <p className="text-xs text-muted-foreground mt-1 max-w-xs mx-auto">
+                Ask the AI to recommend a publishing time, or pick one manually.
+              </p>
+              <div className="flex gap-2 justify-center mt-4">
+                <Button size="sm" onClick={() => generateRecommendation()} disabled={schedLoading}
+                  className="gap-1.5 bg-violet-600 hover:bg-violet-500 text-white">
+                  <Sparkles className="h-3.5 w-3.5" />AI Recommendation
+                </Button>
+                <Button size="sm" variant="outline"
+                  onClick={() => { setScheduleModalMode('new'); setScheduleModalOpen(true); }}>
+                  Pick Manually
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {!schedule && latestRec && (
+            <ScheduleRecommendationCard
+              recommendation={latestRec}
+              alternatives={latestRec.candidateWindows}
+              onAccept={async (params) => { await acceptSchedule(params); }}
+              onChooseOther={() => { setScheduleModalMode('new'); setScheduleModalOpen(true); }}
+              onRegenerate={() => generateRecommendation()}
+              isLoading={schedLoading}
+            />
+          )}
+
+          {schedule && (
+            <ActiveSchedulePanel
+              schedule={schedule}
+              mediaStatus={mediaStatus}
+              onEdit={() => { setScheduleModalMode('edit'); setScheduleModalOpen(true); }}
+              onReschedule={() => { setScheduleModalMode('reschedule'); setScheduleModalOpen(true); }}
+              onCancel={async () => {
+                if (confirm('Cancel this scheduled post?')) await cancelSchedule(schedule.id);
+              }}
+              onRetryPublish={() => retryPublish(schedule.id)}
+              isLoading={schedLoading}
+            />
+          )}
+
+          {schedule?.versions && schedule.versions.length > 1 && (
+            <ScheduleVersionHistory versions={schedule.versions} />
+          )}
+        </div>
+      )}
+
+      {scheduleModalOpen && (
+        <ScheduleModal
+          isOpen={scheduleModalOpen}
+          onClose={() => setScheduleModalOpen(false)}
+          initialDate={schedule?.scheduledAt}
+          initialTimezone={schedule?.scheduleTimezone}
+          title={scheduleModalMode === 'edit' ? 'Edit Schedule' :
+                 scheduleModalMode === 'reschedule' ? 'Reschedule Post' : 'Choose Publishing Time'}
+          confirmLabel={scheduleModalMode === 'edit' ? 'Update Schedule' :
+                        scheduleModalMode === 'reschedule' ? 'Confirm Reschedule' : 'Confirm Schedule'}
+          isLoading={schedLoading}
+          onConfirm={async (params) => {
+            if (scheduleModalMode === 'new') await acceptSchedule(params);
+            else if (scheduleModalMode === 'edit' && schedule) await editSchedule(schedule.id, params);
+            else if (scheduleModalMode === 'reschedule' && schedule) await reschedule(schedule.id, params);
+            setScheduleModalOpen(false);
+          }}
+        />
       )}
     </div>
   );

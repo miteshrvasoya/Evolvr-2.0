@@ -2,6 +2,11 @@ import { Worker, Job } from 'bullmq';
 import { redisConnection, queues } from '../queues/index.js';
 import { sql } from '../db/client.js';
 import { AgentRunTracker } from '../modules/agent/agent-tracker.js';
+import { SchedulingService } from '../modules/scheduling/scheduling.service.js';
+import { SchedulingAgent } from '../modules/scheduling/scheduling.agent.js';
+
+const schedulingService = new SchedulingService();
+const schedulingAgent   = new SchedulingAgent();
 
 export const createOrchestratorWorker = () => {
   const worker = new Worker('orchestrator', async (job: Job) => {
@@ -17,18 +22,110 @@ export const createOrchestratorWorker = () => {
       console.log(`[OrchestratorWorker] Evaluating next action for account ${socialAccountId}`);
 
       // STATE MACHINE:
-      // We evaluate phases in order of dependency. If a phase needs work, we enqueue it and stop evaluating.
-      // Phase 1: PUBLISH - Check if there are posts scheduled to be published right now.
-      // Phase 2: MEASURE - Check if recent posts need analytics fetched.
-      // Phase 3: LEARN - Check if new analytics exist that haven't been synthesized into insights.
-      // Phase 4: ADAPT - Check if strategy is missing or needs revision based on new insights.
-      // Phase 5: OBSERVE - Check if recent research exists (e.g. within last 7 days).
-      // Phase 6: CREATE - Check if content buffer is low.
+      // Phase 0: SCHEDULE HEALTH — flag missed schedules where media is now missing
+      // Phase 0.5: AUTONOMOUS SCHEDULING — schedule ready content if in autonomous mode
+      // Phase 1: PUBLISH — publish posts whose scheduled_at has arrived
+      // Phase 2: MEASURE — fetch analytics for recently published posts
+      // Phase 3: LEARN — synthesize insights from new analytics
+      // Phase 4: ADAPT — revise strategy if needed
+      // Phase 5: OBSERVE — run research if outdated
+      // Phase 6: CREATE — generate content if buffer is low
 
-      // We use simple heuristic rules for this scaffold.
+      // ── Phase 0: Schedule Health Check ────────────────────────────────────
+      // For posts scheduled within the next 2 hours, verify media is ready.
+      // If media is missing, mark as MISSED and notify.
+      const upcomingSoon = await sql`
+        SELECT p.id, p.content_idea_id, p.scheduled_at
+        FROM posts p
+        WHERE p.social_account_id = ${socialAccountId}
+          AND p.schedule_status = 'SCHEDULED'
+          AND p.scheduled_at BETWEEN NOW() AND NOW() + INTERVAL '2 hours'
+      `;
 
-      // Phase 1: Publish
-      // Are there any posts scheduled to be published right now?
+      for (const upcoming of upcomingSoon) {
+        const mediaReady = await schedulingService.isMediaReady(upcoming.contentIdeaId);
+        if (!mediaReady) {
+          await tracker.addLog(`⚠ Post ${upcoming.id} scheduled in <2h but media is missing — marking MISSED`);
+          await sql`
+            UPDATE posts
+            SET schedule_status = 'MISSED',
+                publish_failure_reason = 'Required media was unavailable at scheduled time',
+                updated_at = NOW()
+            WHERE id = ${upcoming.id}
+          `;
+          await sql`
+            UPDATE publish_jobs
+            SET status = 'CANCELLED', updated_at = NOW()
+            WHERE post_id = ${upcoming.id} AND status IN ('PENDING', 'RETRYING')
+          `;
+          await tracker.logEvent(stepId, 'SCHEDULE_MISSED', 'warn',
+            `Post ${upcoming.id} scheduled at ${upcoming.scheduledAt} missed: media not ready`,
+            { postId: upcoming.id, contentIdeaId: upcoming.contentIdeaId });
+        }
+      }
+
+      // ── Phase 0.5: Autonomous Scheduling ─────────────────────────────────
+      // Only runs in 'autonomous' autonomy mode.
+      const goals = await sql`
+        SELECT autonomy_level FROM admin_goals
+        WHERE social_account_id = ${socialAccountId} AND is_active = true LIMIT 1
+      `;
+      const autonomyLevel = goals[0]?.autonomyLevel ?? 'supervised';
+
+      if (autonomyLevel === 'autonomous') {
+        // Find ready content without an active schedule
+        const readyContent = await sql`
+          SELECT ci.id FROM content_ideas ci
+          WHERE ci.social_account_id = ${socialAccountId}
+            AND ci.status IN ('draft')
+            AND ci.asset_generation_status = 'completed'
+            AND NOT EXISTS (
+              SELECT 1 FROM posts p
+              WHERE p.content_idea_id = ci.id
+                AND p.schedule_status IN ('SCHEDULED', 'SUGGESTED')
+            )
+          LIMIT 3
+        `;
+
+        if (readyContent.length > 0) {
+          await tracker.addLog(`Autonomous mode: generating schedules for ${readyContent.length} ready content items`);
+          const ideaIds = readyContent.map((r: any) => r.id);
+          await schedulingAgent.generateBulkRecommendations(socialAccountId, ideaIds, agentRunId, stepId);
+
+          // Auto-accept recommendations in autonomous mode
+          for (const ideaId of ideaIds) {
+            try {
+              const recs = await sql`
+                SELECT * FROM schedule_recommendations
+                WHERE content_idea_id = ${ideaId} AND status = 'SUGGESTED'
+                ORDER BY created_at DESC LIMIT 1
+              `;
+              if (recs.length > 0) {
+                const rec = recs[0];
+                await schedulingService.createSchedule({
+                  contentIdeaId: ideaId,
+                  accountId: socialAccountId,
+                  scheduledAt: new Date(rec.recommendedAt),
+                  timezone: rec.timezone,
+                  source: 'AGENT',
+                  actor: 'agent',
+                  reason: 'Autonomous agent scheduled based on recommendation',
+                  recommendationId: rec.id,
+                });
+                await tracker.logEvent(stepId, 'SCHEDULE_ACCEPTED', 'info',
+                  `Autonomous: scheduled content ${ideaId} for ${rec.recommendedAt}`,
+                  { contentIdeaId: ideaId, recommendedAt: rec.recommendedAt });
+              }
+            } catch (schedErr: any) {
+              await tracker.addLog(`Autonomous scheduling failed for ${ideaId}: ${schedErr.message}`);
+            }
+          }
+
+          await tracker.completeStep(stepId, { action: 'autonomous_scheduling', scheduled: ideaIds.length });
+          return { action: 'autonomous_scheduling' };
+        }
+      }
+
       const postsToPublish = await sql`
         SELECT id FROM posts 
         WHERE social_account_id = ${socialAccountId} 

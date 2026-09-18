@@ -152,4 +152,66 @@ export class AgentRunTracker {
       WHERE id = ${this.runId}
     `;
   }
+
+  // ── Scheduling Event Helpers ─────────────────────────────────────────────────
+
+  async logScheduleRecommendationCreated(stepId: string | null, contentIdeaId: string, recommendedAt: string, candidateCount: number) {
+    return this.logEvent(stepId, 'SCHEDULE_RECOMMENDATION_CREATED', 'info',
+      `Schedule recommended for content ${contentIdeaId}: ${recommendedAt}`,
+      { contentIdeaId, recommendedAt, candidateCount });
+  }
+
+  async logScheduleAccepted(stepId: string | null, postId: string, scheduledAt: string, timezone: string, actor: string) {
+    return this.logEvent(stepId, 'SCHEDULE_ACCEPTED', 'info',
+      `Schedule accepted: post ${postId} → ${scheduledAt} (${timezone})`,
+      { postId, scheduledAt, timezone, actor });
+  }
+
+  async logScheduleEdited(stepId: string | null, postId: string, oldAt: string, newAt: string, actor: string) {
+    return this.logEvent(stepId, 'SCHEDULE_EDITED', 'info',
+      `Schedule edited: post ${postId} from ${oldAt} → ${newAt} by ${actor}`,
+      { postId, oldAt, newAt, actor });
+  }
+
+  async logScheduleCancelled(stepId: string | null, postId: string, reason: string, actor: string) {
+    return this.logEvent(stepId, 'SCHEDULE_CANCELLED', 'info',
+      `Schedule cancelled: post ${postId} — ${reason}`,
+      { postId, reason, actor });
+  }
+
+  async logScheduleMissed(stepId: string | null, postId: string, reason: string) {
+    return this.logEvent(stepId, 'SCHEDULE_MISSED', 'warn',
+      `Schedule missed: post ${postId} — ${reason}`,
+      { postId, reason });
+  }
+
+  async logPublishJobCreated(stepId: string | null, postId: string, publishJobId: string, bullmqJobId: string, scheduledAt: string) {
+    return this.logEvent(stepId, 'PUBLISH_JOB_CREATED', 'info',
+      `Publish job created for post ${postId} at ${scheduledAt}`,
+      { postId, publishJobId, bullmqJobId, scheduledAt });
+  }
+
+  async logPublishStarted(stepId: string | null, postId: string, attempt: number) {
+    return this.logEvent(stepId, 'PUBLISH_STARTED', 'info',
+      `Publishing started: post ${postId} (attempt ${attempt})`,
+      { postId, attempt });
+  }
+
+  async logPublishSucceeded(stepId: string | null, postId: string, platformPostId: string, latencyMs: number) {
+    return this.logEvent(stepId, 'PUBLISH_SUCCEEDED', 'info',
+      `Published successfully: post ${postId} → ${platformPostId}`,
+      { postId, platformPostId, latencyMs });
+  }
+
+  async logPublishFailed(stepId: string | null, postId: string, errorCode: string, message: string, retryable: boolean) {
+    return this.logEvent(stepId, 'PUBLISH_FAILED', 'error',
+      `Publish failed: post ${postId} — ${errorCode}: ${message} (retryable: ${retryable})`,
+      { postId, errorCode, message, retryable });
+  }
+
+  async logPublishRetry(stepId: string | null, postId: string, attempt: number, nextRetryAt: string) {
+    return this.logEvent(stepId, 'PUBLISH_RETRY', 'warn',
+      `Publish retrying: post ${postId} (attempt ${attempt}) — next: ${nextRetryAt}`,
+      { postId, attempt, nextRetryAt });
+  }
 }

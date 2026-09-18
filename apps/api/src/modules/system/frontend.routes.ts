@@ -191,7 +191,7 @@ export default async function dashboardRoutes(app: FastifyInstance) {
     // Fetch upcoming posts (scheduled + awaiting approval)
     const upcomingPosts = await sql`
       SELECT * FROM posts
-      WHERE social_account_id = ${accountId} AND status IN ('scheduled', 'waiting_approval')
+      WHERE social_account_id = ${accountId} AND status IN ('scheduled', 'waiting_approval', 'SCHEDULED')
       ORDER BY scheduled_at ASC LIMIT 5
     `;
 
