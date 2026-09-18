@@ -6,6 +6,7 @@ import { AssetErrorCategory, MediaGenerationError } from './media.interface.js';
 
 export interface PersistPromptParams {
   contentIdeaId: string;
+  mediaRequirementId: string;
   assetType: 'image' | 'video_placeholder' | 'carousel' | 'thumbnail';
   promptText: string;
   provider?: string;
@@ -82,7 +83,7 @@ export class AssetGenerationService {
    * Returns the new prompt's UUID.
    */
   async persistPrompt(params: PersistPromptParams): Promise<string> {
-    const { contentIdeaId, assetType, promptText, provider, model, source, originalPromptId } = params;
+    const { contentIdeaId, mediaRequirementId, assetType, promptText, provider, model, source, originalPromptId } = params;
 
     // Determine next version number for this content + asset type
     const existing = await sql`
@@ -95,9 +96,9 @@ export class AssetGenerationService {
     const promptId = randomUUID();
     await sql`
       INSERT INTO content_asset_prompts
-        (id, content_idea_id, asset_type, prompt_text, prompt_version, provider, model, source, original_prompt_id)
+        (id, content_idea_id, media_requirement_id, asset_type, prompt_text, prompt_version, provider, model, source, original_prompt_id)
       VALUES
-        (${promptId}, ${contentIdeaId}, ${assetType}, ${promptText}, ${nextVersion},
+        (${promptId}, ${contentIdeaId}, ${mediaRequirementId}, ${assetType}, ${promptText}, ${nextVersion},
          ${provider || null}, ${model || null}, ${source}, ${originalPromptId || null})
     `;
 
@@ -158,6 +159,7 @@ export class AssetGenerationService {
     const prompts = await sql`SELECT * FROM content_asset_prompts WHERE id = ${promptId}`;
     if (!prompts.length) throw new Error(`Prompt ${promptId} not found`);
     const promptRecord = prompts[0]!;
+    const mediaRequirementId = promptRecord.mediaRequirementId;
 
     const provider = getMediaProvider();
     const providerName = (provider as any).constructor?.name?.toLowerCase().replace('mediaprovider', '') || 'unknown';
@@ -226,10 +228,10 @@ export class AssetGenerationService {
       const assetId = randomUUID();
       await sql`
         INSERT INTO content_assets
-          (id, content_idea_id, asset_type, storage_url, mime_type, prompt, generation_metadata,
-           generation_status, source, generation_attempt_id)
+          (id, content_idea_id, media_requirement_id, asset_type, storage_url, mime_type, prompt, generation_metadata,
+           generation_status, source, generation_attempt_id, asset_status)
         VALUES
-          (${assetId}, ${contentIdeaId}, ${assetType}, ${storageUrl}, ${mediaResult.mimeType},
+          (${assetId}, ${contentIdeaId}, ${mediaRequirementId}, ${assetType}, ${storageUrl}, ${mediaResult.mimeType},
            ${promptRecord.promptText}, ${sql.json({
              ...mediaResult.metadata,
              provider: mediaResult.provider,
@@ -237,7 +239,7 @@ export class AssetGenerationService {
              promptId,
              attemptNumber,
            })},
-           'generated', 'ai_generated', ${attemptId})
+           'generated', 'ai_generated', ${attemptId}, 'ACTIVE')
       `;
 
       // Mark attempt as generated
@@ -256,6 +258,12 @@ export class AssetGenerationService {
             needs_attention_reason = NULL,
             updated_at = NOW()
         WHERE id = ${contentIdeaId}
+      `;
+
+      await sql`
+        UPDATE media_requirements
+        SET status = 'READY', updated_at = NOW()
+        WHERE id = ${mediaRequirementId}
       `;
 
       console.log(`[AssetGenerationService] ✓ Asset generated for idea ${contentIdeaId} in ${durationMs}ms`);
@@ -293,6 +301,11 @@ export class AssetGenerationService {
               needs_attention_reason = ${reason},
               updated_at = NOW()
           WHERE id = ${contentIdeaId}
+        `;
+        await sql`
+          UPDATE media_requirements
+          SET status = 'FAILED', updated_at = NOW()
+          WHERE id = ${mediaRequirementId}
         `;
       }
 

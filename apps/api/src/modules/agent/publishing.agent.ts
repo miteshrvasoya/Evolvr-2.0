@@ -17,7 +17,8 @@ export class PublishingAgent {
         SELECT p.id, p.caption, ca.storage_url, ca.asset_type
         FROM posts p
         JOIN content_ideas ci ON p.content_idea_id = ci.id
-        LEFT JOIN content_assets ca ON ci.id = ca.content_idea_id
+        LEFT JOIN media_requirements mr ON mr.content_idea_id = ci.id
+        LEFT JOIN content_assets ca ON ca.media_requirement_id = mr.id AND ca.asset_status = 'ACTIVE'
         WHERE p.id = ${postId} AND p.social_account_id = ${socialAccountId}
         LIMIT 1
       `;

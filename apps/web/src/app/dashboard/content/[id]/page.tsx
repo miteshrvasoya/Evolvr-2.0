@@ -2,8 +2,9 @@
 
 import { use, useState } from 'react';
 import Link from 'next/link';
-import { useContentDetail, useGenerationHistory, type ContentPrompt } from '@/lib/hooks/use-content-detail';
+import { useContentDetail, useGenerationHistory, type ContentPrompt, type MediaRequirement } from '@/lib/hooks/use-content-detail';
 import { useAssetActions } from '@/lib/hooks/use-asset-actions';
+import { MediaUploader } from '@/components/media/MediaUploader';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -211,34 +212,23 @@ function AssetPanel({
   ideaId,
   assets,
   prompts,
+  mediaRequirements,
   onRefresh,
 }: {
   ideaId: string;
   assets: any[];
   prompts: ContentPrompt[];
+  mediaRequirements: any[];
   onRefresh: () => void;
 }) {
   const [uploading, setUploading] = useState(false);
-  const { isRetrying, retryAsset, uploadAsset } = useAssetActions(ideaId, onRefresh);
+  const { isRetrying, retryAsset } = useAssetActions(ideaId, onRefresh);
 
-  const imageAsset = assets.find(a => a.assetType === 'image');
-  const imagePrompts = prompts.filter(p => p.assetType === 'image').sort((a, b) => b.promptVersion - a.promptVersion);
-  const videoPrompts = prompts.filter(p => p.assetType === 'video_placeholder').sort((a, b) => b.promptVersion - a.promptVersion);
-
-  const isFailed = imageAsset?.generationStatus === 'failed' || (imagePrompts.length > 0 && !imageAsset);
-  const errorInfo = imageAsset?.errorCategory ? ERROR_LABELS[imageAsset.errorCategory] : null;
-
-  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploading(true);
-    try {
-      await uploadAsset(file);
-      toast({ title: 'Asset uploaded', description: 'Image attached.' });
-      onRefresh();
-    } catch { toast({ variant: 'destructive', title: 'Upload failed' }); }
-    finally { setUploading(false); }
-  }
+  const activeImage = assets.find(a => a.assetType === 'image' && a.assetStatus === 'ACTIVE') 
+                   || assets.find(a => a.assetType === 'image'); // fallback if none active
+  
+  const imageRequirement = mediaRequirements?.find(r => r.mediaType === 'image');
+  const videoRequirement = mediaRequirements?.find(r => r.mediaType === 'video_placeholder');
 
   return (
     <div className="space-y-6">
@@ -247,18 +237,18 @@ function AssetPanel({
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold flex items-center gap-2">
             <ImagePlus className="h-4 w-4" />
-            Image
-            {imageAsset?.generationStatus && (
+            Image Media
+            {imageRequirement?.status && (
               <Badge
-                variant={imageAsset.generationStatus === 'generated' ? 'success' : 'destructive'}
+                variant={imageRequirement.status === 'READY' ? 'success' : imageRequirement.status === 'FAILED' ? 'destructive' : 'secondary'}
                 className="text-[10px]"
               >
-                {imageAsset.generationStatus.replace('_', ' ')}
+                {imageRequirement.status}
               </Badge>
             )}
           </h3>
           <div className="flex gap-2">
-            {(isFailed || !imageAsset) && imagePrompts.length > 0 && (
+            {(imageRequirement?.status === 'FAILED' || imageRequirement?.status === 'PENDING') && imagePrompts.length > 0 && (
               <Button
                 size="sm" variant="outline"
                 onClick={() => retryAsset('image')}
@@ -266,46 +256,56 @@ function AssetPanel({
                 className="h-8 text-xs gap-1"
               >
                 {isRetrying ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-                Retry
+                Retry AI
               </Button>
             )}
-            <label className={cn(
-              'inline-flex items-center gap-1.5 px-3 py-1.5 h-8 text-xs rounded-md border cursor-pointer hover:bg-accent transition-colors',
-              uploading && 'opacity-50 pointer-events-none',
-            )}>
-              {uploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
-              {uploading ? 'Uploading…' : 'Upload Image'}
-              <input type="file" accept="image/*,video/*" className="hidden" onChange={handleUpload} disabled={uploading} />
-            </label>
           </div>
         </div>
 
         {/* Image preview or placeholder */}
-        {imageAsset?.storageUrl ? (
-          <div className="relative rounded-xl overflow-hidden border bg-muted aspect-video max-w-sm">
-            <img src={imageAsset.storageUrl} alt="Generated" className="w-full h-full object-cover" />
+        {activeImage?.storageUrl ? (
+          <div className="relative rounded-xl overflow-hidden border bg-muted aspect-video max-w-sm group">
+            <img src={activeImage.storageUrl} alt="Generated" className="w-full h-full object-cover" />
+            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+              <Button size="sm" variant="secondary" onClick={() => setUploading(!uploading)}>
+                Replace Media
+              </Button>
+            </div>
           </div>
         ) : (
           <div className="rounded-xl border-2 border-dashed border-border bg-muted/20 aspect-video max-w-sm flex flex-col items-center justify-center gap-2 text-muted-foreground/50">
             <ImagePlus className="h-8 w-8" />
-            <span className="text-xs">No image yet</span>
+            <span className="text-xs">No media yet</span>
+            {!uploading && (
+              <Button size="sm" variant="outline" onClick={() => setUploading(true)} className="mt-2">
+                Upload Manually
+              </Button>
+            )}
+          </div>
+        )}
+
+        {uploading && imageRequirement && (
+          <div className="max-w-sm animate-in fade-in slide-in-from-top-2">
+            <MediaUploader 
+              contentIdeaId={ideaId} 
+              mediaRequirement={imageRequirement} 
+              onUploadComplete={() => { setUploading(false); onRefresh(); }} 
+            />
+            <Button variant="ghost" size="sm" onClick={() => setUploading(false)} className="mt-2 text-xs w-full">Cancel Upload</Button>
           </div>
         )}
 
         {/* Error detail */}
-        {imageAsset?.errorCategory && (
+        {activeImage?.errorCategory && (
           <div className="rounded-lg bg-red-50 border border-red-200 dark:bg-red-950/20 dark:border-red-800 p-3 space-y-1">
             <div className="flex items-center gap-2">
               <XCircle className="h-4 w-4 text-red-500 shrink-0" />
               <p className="text-xs font-semibold text-red-700 dark:text-red-400">
-                {errorInfo?.label || imageAsset.errorCategory}
+                {ERROR_LABELS[activeImage.errorCategory]?.label || activeImage.errorCategory}
               </p>
             </div>
-            {imageAsset.errorMessage && (
-              <p className="text-xs text-red-600 dark:text-red-500 ml-6 font-mono">{imageAsset.errorMessage}</p>
-            )}
-            {errorInfo?.tip && (
-              <p className="text-xs text-amber-600 dark:text-amber-400 ml-6">→ {errorInfo.tip}</p>
+            {activeImage.errorMessage && (
+              <p className="text-xs text-red-600 dark:text-red-500 ml-6 font-mono">{activeImage.errorMessage}</p>
             )}
           </div>
         )}
@@ -323,11 +323,34 @@ function AssetPanel({
 
       {/* Video prompts (if any) */}
       {videoPrompts.length > 0 && (
-        <div className="space-y-2">
-          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Video Prompts</h4>
-          {videoPrompts.map((p, i) => (
-            <PromptCard key={p.id} prompt={p} isCurrent={i === 0} ideaId={ideaId} onRefresh={onRefresh} hasFailed={false} />
-          ))}
+        <div className="space-y-4">
+           <h3 className="text-sm font-semibold flex items-center gap-2">
+            <ImagePlus className="h-4 w-4" />
+            Video Media
+            {videoRequirement?.status && (
+              <Badge
+                variant={videoRequirement.status === 'READY' ? 'success' : videoRequirement.status === 'FAILED' ? 'destructive' : 'secondary'}
+                className="text-[10px]"
+              >
+                {videoRequirement.status}
+              </Badge>
+            )}
+          </h3>
+          {videoRequirement && (
+            <div className="max-w-sm">
+              <MediaUploader 
+                contentIdeaId={ideaId} 
+                mediaRequirement={videoRequirement} 
+                onUploadComplete={() => { onRefresh(); }} 
+              />
+            </div>
+          )}
+          <div className="space-y-2">
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Video Prompts</h4>
+            {videoPrompts.map((p, i) => (
+              <PromptCard key={p.id} prompt={p} isCurrent={i === 0} ideaId={ideaId} onRefresh={onRefresh} hasFailed={false} />
+            ))}
+          </div>
         </div>
       )}
 
@@ -548,6 +571,7 @@ export default function ContentDetailPage({ params }: PageProps) {
           ideaId={content.id}
           assets={content.assets || []}
           prompts={content.prompts || []}
+          mediaRequirements={content.mediaRequirements || []}
           onRefresh={handleRefresh}
         />
       )}

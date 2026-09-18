@@ -140,6 +140,11 @@ export default async function contentRoutes(app: FastifyInstance) {
       ORDER BY prompt_version DESC
     `;
 
+    const requirements = await sql`
+      SELECT * FROM media_requirements
+      WHERE content_idea_id = ${ideaId}
+    `;
+
     const versions = await sql`
       SELECT * FROM content_idea_versions
       WHERE content_idea_id = ${ideaId}
@@ -148,7 +153,7 @@ export default async function contentRoutes(app: FastifyInstance) {
 
     return {
       success: true,
-      data: { ...idea, assets, prompts, versions },
+      data: { ...idea, assets, prompts, versions, mediaRequirements: requirements },
     };
   });
 

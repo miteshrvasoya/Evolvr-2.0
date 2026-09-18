@@ -176,8 +176,15 @@ export class ContentAgent {
           await tracker.logEvent(stepId, 'PROMPT_PERSISTED', 'info',
             `Persisting ${assetType} prompt for idea ${ideaId} (before generation)...`);
 
+          const reqId = randomUUID();
+          await sql`
+            INSERT INTO media_requirements (id, content_idea_id, media_type, status)
+            VALUES (${reqId}, ${ideaId}, ${assetType}, 'PENDING')
+          `;
+
           const promptId = await this.assetService.persistPrompt({
             contentIdeaId: ideaId,
+            mediaRequirementId: reqId,
             assetType: assetType as any,
             promptText: imagePromptText,
             source: 'ai_generated',

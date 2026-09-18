@@ -29,9 +29,9 @@ export class ContentScheduler {
       // Insert Post
       await sql`
         INSERT INTO posts (
-          id, social_account_id, content_idea_id, caption, media_type, scheduled_at, status, strategy_version_id, idempotency_key
+          id, social_account_id, content_idea_id, caption, media_type, scheduled_at, status, strategy_version_id, idempotency_key, schedule_status
         ) VALUES (
-          ${postId}, ${accountId}, ${idea.id}, ${idea.caption}, ${idea.format}, ${scheduledAt}, 'scheduled', ${idea.strategyVersionId}, ${idempotencyKey}
+          ${postId}, ${accountId}, ${idea.id}, ${idea.caption}, ${idea.format}, ${scheduledAt}, 'scheduled', ${idea.strategyVersionId}, ${idempotencyKey}, 'SCHEDULED'
         )
       `;
 
