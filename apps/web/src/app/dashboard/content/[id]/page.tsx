@@ -331,7 +331,7 @@ export default function ContentDetailPage({ params }: PageProps) {
   const { id } = params;
   const { content, isLoading, refresh } = useContentDetail(id);
   const { attempts, refresh: refreshHistory } = useGenerationHistory(id);
-  const [activeSection, setActiveSection] = useState<'media' | 'overview' | 'history' | 'versions'>('media');
+  const [activeSection, setActiveSection] = useState<'media' | 'overview' | 'history' | 'versions' | 'schedule'>('media');
   const [uploading, setUploading] = useState(false);
   const { isRetrying, retryAsset } = useAssetActions(id, () => { refresh(); refreshHistory(); });
 
@@ -381,7 +381,7 @@ export default function ContentDetailPage({ params }: PageProps) {
   const assets      = content.assets ?? [];
   const prompts     = content.prompts ?? [];
   const mediaReqs   = content.mediaRequirements ?? [];
-  const activeImages = assets.filter(a => (a.assetType === 'image' || a.assetType === 'carousel' || a.assetType === 'CAROUSEL') && a.assetStatus === 'ACTIVE');
+  const activeImages = assets.filter(a => (a.assetType === 'image' || a.assetType === 'carousel' || a.assetType === 'CAROUSEL') && a.status === 'ACTIVE');
   if (activeImages.length === 0) {
     const fallback = assets.find(a => a.assetType === 'image' || a.assetType === 'carousel');
     if (fallback) activeImages.push(fallback);
