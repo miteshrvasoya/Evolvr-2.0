@@ -6,6 +6,7 @@ export interface StorageAdapter {
   saveFile(filename: string, buffer: Buffer): Promise<string>;
   getFile(filename: string): Promise<Buffer>;
   deleteFile(filename: string): Promise<void>;
+  generatePresignedUrl(filename: string, contentType?: string): Promise<{ uploadUrl: string; storageUrl: string }>;
 }
 
 let storageInstance: StorageAdapter | null = null;

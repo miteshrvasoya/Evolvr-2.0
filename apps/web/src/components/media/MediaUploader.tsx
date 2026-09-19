@@ -87,37 +87,82 @@ export function MediaUploader({ contentIdeaId, mediaRequirement, onUploadComplet
     setIsUploading(true);
     setProgress(10); // Simulated start
 
-    const formData = new FormData();
-    formData.append('contentIdeaId', contentIdeaId);
-    formData.append('mediaRequirementId', mediaRequirement.id);
-    
-    files.forEach((f) => {
-      formData.append('file', f.file);
-    });
-
     try {
       const progressInterval = setInterval(() => {
-        setProgress(p => Math.min(p + 10, 90));
+        setProgress(p => Math.min(p + 5, 90));
       }, 300);
 
       const token = document.cookie.match(/(?:^|;\s*)auth_token=([^;]+)/)?.[1] || localStorage.getItem('auth_token');
       const baseUrl = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001').replace('localhost', '127.0.0.1');
       
-      const response = await fetch(`${baseUrl}/api/media/upload`, {
+      // 1. Get presigned URLs
+      const presignedRes = await fetch(`${baseUrl}/api/media/presigned-urls`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
-        body: formData,
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json' 
+        },
+        body: JSON.stringify({
+          contentIdeaId,
+          mediaRequirementId: mediaRequirement.id,
+          files: files.map(f => ({ filename: f.file.name, mimetype: f.file.type }))
+        }),
+      });
+
+      if (!presignedRes.ok) {
+        const err = await presignedRes.json();
+        throw new Error(err.error || 'Failed to get upload URLs');
+      }
+
+      const { urls } = await presignedRes.json();
+      
+      // 2. Upload files to S3 directly (or local fallback)
+      const uploadedFiles: { storageUrl: string; mimetype: string }[] = [];
+      for (let i = 0; i < files.length; i++) {
+        const fileObj = files[i];
+        const urlObj = urls[i];
+        
+        const uploadRes = await fetch(urlObj.uploadUrl, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': fileObj.file.type,
+          },
+          body: fileObj.file,
+        });
+
+        if (!uploadRes.ok) {
+          throw new Error(`Failed to upload ${fileObj.file.name}`);
+        }
+        
+        uploadedFiles.push({
+          storageUrl: urlObj.storageUrl,
+          mimetype: fileObj.file.type
+        });
+      }
+
+      // 3. Confirm upload
+      const confirmRes = await fetch(`${baseUrl}/api/media/confirm-upload`, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          contentIdeaId,
+          mediaRequirementId: mediaRequirement.id,
+          files: uploadedFiles
+        }),
       });
 
       clearInterval(progressInterval);
       setProgress(100);
 
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || 'Upload failed');
+      if (!confirmRes.ok) {
+        const err = await confirmRes.json();
+        throw new Error(err.error || 'Failed to confirm upload');
       }
 
-      const data = await response.json();
+      const data = await confirmRes.json();
       
       toast({
         title: 'Upload Successful',

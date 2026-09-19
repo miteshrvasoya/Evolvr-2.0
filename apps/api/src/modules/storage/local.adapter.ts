@@ -25,6 +25,12 @@ export class LocalStorageAdapter {
     return `/storage/${filename}`;
   }
 
+  async generatePresignedUrl(filename: string, contentType?: string): Promise<{ uploadUrl: string; storageUrl: string }> {
+    const storageUrl = `/storage/${filename}`;
+    const uploadUrl = `/api/media/local-upload?filename=${encodeURIComponent(filename)}`;
+    return { uploadUrl, storageUrl };
+  }
+
   async getFile(filename: string): Promise<Buffer> {
     const filePath = path.join(this.storageDir, filename);
     return await fs.readFile(filePath);

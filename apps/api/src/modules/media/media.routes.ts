@@ -9,6 +9,151 @@ export default async function mediaRoutes(app: FastifyInstance) {
 
   app.addHook('onRequest', app.authenticate);
 
+  app.post('/media/presigned-urls', async (request, reply) => {
+    const { contentIdeaId, mediaRequirementId, files } = request.body as {
+      contentIdeaId: string;
+      mediaRequirementId: string;
+      files: { filename: string; mimetype: string }[];
+    };
+
+    if (!contentIdeaId || !mediaRequirementId || !files || !files.length) {
+      return reply.code(400).send({ error: 'Missing required fields' });
+    }
+
+    const reqs = await sql`
+      SELECT mr.*, ci.social_account_id
+      FROM media_requirements mr
+      JOIN content_ideas ci ON ci.id = mr.content_idea_id
+      JOIN social_accounts sa ON sa.id = ci.social_account_id
+      WHERE mr.id = ${mediaRequirementId} AND sa.user_id = ${(request as any).user.id}
+    `;
+
+    if (!reqs.length) {
+      return reply.code(404).send({ error: 'Media requirement not found or unauthorized' });
+    }
+
+    const req = reqs[0];
+    if (req.mediaType !== 'CAROUSEL' && files.length > 1) {
+      return reply.code(400).send({ error: 'Only Carousel posts support multiple files' });
+    }
+
+    const urls = await Promise.all(
+      files.map(async (file) => {
+        const ext = path.extname(file.filename) || (file.mimetype.includes('video') ? '.mp4' : '.jpg');
+        const filename = `media_manual_${req.id}_${randomUUID()}${ext}`;
+        const { uploadUrl, storageUrl } = await storageAdapter.generatePresignedUrl(filename, file.mimetype);
+        return { uploadUrl, storageUrl, mimetype: file.mimetype };
+      })
+    );
+
+    return { success: true, urls };
+  });
+
+  app.put('/media/local-upload', async (request, reply) => {
+    const filename = (request.query as any).filename;
+    if (!filename) {
+      return reply.code(400).send({ error: 'Filename is required' });
+    }
+
+    const buffer = await request.raw.body; // In fastify, raw body needs special handling for large files or we can use parts
+    // Actually, fastify requires a plugin or raw request handling. 
+    // Let's use simple stream to buffer for the raw body in this local mock route
+    return new Promise((resolve, reject) => {
+      const chunks: Buffer[] = [];
+      request.raw.on('data', chunk => chunks.push(chunk));
+      request.raw.on('end', async () => {
+        const fullBuffer = Buffer.concat(chunks);
+        try {
+          const storedPath = await storageAdapter.saveFile(filename, fullBuffer);
+          resolve({ success: true, url: storedPath });
+        } catch (e) {
+          reject(e);
+        }
+      });
+      request.raw.on('error', reject);
+    });
+  });
+
+  app.post('/media/confirm-upload', async (request, reply) => {
+    const { contentIdeaId, mediaRequirementId, files } = request.body as {
+      contentIdeaId: string;
+      mediaRequirementId: string;
+      files: { storageUrl: string; mimetype: string }[];
+    };
+
+    if (!contentIdeaId || !mediaRequirementId || !files || !files.length) {
+      return reply.code(400).send({ error: 'Missing required fields' });
+    }
+
+    const reqs = await sql`
+      SELECT mr.*, ci.social_account_id
+      FROM media_requirements mr
+      JOIN content_ideas ci ON ci.id = mr.content_idea_id
+      JOIN social_accounts sa ON sa.id = ci.social_account_id
+      WHERE mr.id = ${mediaRequirementId} AND sa.user_id = ${(request as any).user.id}
+    `;
+
+    if (!reqs.length) {
+      return reply.code(404).send({ error: 'Media requirement not found or unauthorized' });
+    }
+
+    const req = reqs[0];
+    const uploadedAssets: { assetId: string; storageUrl: string }[] = [];
+
+    await sql.begin(async (sql) => {
+      await sql`
+        UPDATE content_assets 
+        SET asset_status = 'REPLACED'
+        WHERE media_requirement_id = ${req.id} AND asset_status = 'ACTIVE'
+      `;
+
+      for (const file of files) {
+        const assetId = randomUUID();
+        await sql`
+          INSERT INTO content_assets
+            (id, content_idea_id, media_requirement_id, asset_type, storage_url, mime_type, 
+             generation_status, source, asset_status, uploaded_by)
+          VALUES
+            (${assetId}, ${req.contentIdeaId}, ${req.id}, ${req.mediaType}, ${file.storageUrl}, ${file.mimetype},
+             'generated', 'USER_UPLOADED', 'ACTIVE', ${(request as any).user.id})
+        `;
+        uploadedAssets.push({ assetId, storageUrl: file.storageUrl });
+      }
+
+      await sql`
+        UPDATE media_requirements
+        SET status = 'READY', updated_at = NOW()
+        WHERE id = ${req.id}
+      `;
+
+      await sql`
+        UPDATE content_ideas
+        SET asset_generation_status = 'completed',
+            needs_attention = false,
+            needs_attention_reason = NULL,
+            updated_at = NOW()
+        WHERE id = ${req.contentIdeaId}
+      `;
+
+      await sql`
+        INSERT INTO agent_events (
+          agent_run_id, agent_step_id, event_type, level, message, metadata
+        ) VALUES (
+          NULL, NULL, 'USER_MEDIA_UPLOADED', 'info', 
+          'User manually uploaded media to satisfy requirement',
+          ${sql.json({ assets: uploadedAssets, mediaRequirementId: req.id })}
+        )
+      `;
+    });
+
+    return { 
+      success: true, 
+      assetId: uploadedAssets[0].assetId,
+      storageUrl: uploadedAssets[0].storageUrl,
+      assets: uploadedAssets 
+    };
+  });
+
   app.post('/media/upload', async (request, reply) => {
     const parts = request.parts();
     const files: any[] = [];

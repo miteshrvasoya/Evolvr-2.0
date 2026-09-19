@@ -1,4 +1,5 @@
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { env } from '../../config/env.js';
 import { randomUUID } from 'crypto';
 
@@ -36,6 +37,21 @@ export class S3StorageAdapter {
     );
 
     return `${this.publicUrl}/${key}`;
+  }
+
+  async generatePresignedUrl(filename: string, contentType?: string): Promise<{ uploadUrl: string; storageUrl: string }> {
+    const key = `uploads/${randomUUID()}_${filename}`;
+    const command = new PutObjectCommand({
+      Bucket: this.bucket,
+      Key: key,
+      ContentType: contentType,
+    });
+
+    const uploadUrl = await getSignedUrl(this.client, command, { expiresIn: 3600 });
+    return {
+      uploadUrl,
+      storageUrl: `${this.publicUrl}/${key}`,
+    };
   }
 
   async getFile(filename: string): Promise<Buffer> {
