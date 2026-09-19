@@ -26,9 +26,24 @@ export class LocalStorageAdapter {
   }
 
   async generatePresignedUrl(filename: string, contentType?: string): Promise<{ uploadUrl: string; storageUrl: string }> {
-    const storageUrl = `/storage/${filename}`;
+    const storageUrl = filename; // We use object_key for both R2 and local now
     const uploadUrl = `/api/media/local-upload?filename=${encodeURIComponent(filename)}`;
     return { uploadUrl, storageUrl };
+  }
+
+  async generateDownloadUrl(key: string, expiresIn?: number): Promise<string> {
+    // For local, we just return the local storage path
+    return `/storage/${key}`;
+  }
+
+  async objectExists(key: string): Promise<boolean> {
+    try {
+      const filePath = path.join(this.storageDir, key);
+      await fs.access(filePath);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   async getFile(filename: string): Promise<Buffer> {

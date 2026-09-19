@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { sql } from '../../db/client.js';
 import { getMediaProvider } from './index.js';
 import { getStorageAdapter } from '../storage/index.js';
+import { env } from '../../config/env.js';
 import { AssetErrorCategory, MediaGenerationError } from './media.interface.js';
 
 export interface PersistPromptParams {
@@ -224,16 +225,17 @@ export class AssetGenerationService {
       else if (mediaResult.mimeType.includes('png')) ext = 'png';
 
       const filename = `media_${contentIdeaId}_${attemptId}.${ext}`;
-      const storageUrl = await this.storageAdapter.saveFile(filename, mediaResult.buffer);
+      const objectKey = `generated/${contentIdeaId}/${filename}`; // For AI generated, we don't have a direct userId context here without joining. A simpler path is fine. Or just `uploads/...`
+      const storageUrl = await this.storageAdapter.saveFile(objectKey, mediaResult.buffer);
 
       // Insert into content_assets
       const assetId = randomUUID();
       await sql`
         INSERT INTO content_assets
-          (id, content_idea_id, media_requirement_id, asset_type, storage_url, mime_type, prompt, generation_metadata,
+          (id, content_idea_id, media_requirement_id, asset_type, object_key, storage_provider, mime_type, prompt, generation_metadata,
            generation_status, source, generation_attempt_id, asset_status)
         VALUES
-          (${assetId}, ${contentIdeaId}, ${mediaRequirementId}, ${assetType}, ${storageUrl}, ${mediaResult.mimeType},
+          (${assetId}, ${contentIdeaId}, ${mediaRequirementId}, ${assetType}, ${objectKey}, ${env.STORAGE_PROVIDER}, ${mediaResult.mimeType},
            ${promptRecord.promptText}, ${sql.json({
              ...mediaResult.metadata,
              provider: mediaResult.provider,

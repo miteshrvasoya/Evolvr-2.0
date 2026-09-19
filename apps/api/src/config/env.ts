@@ -52,14 +52,12 @@ const envSchema = z.object({
   INSTAGRAM_API_VERSION: z.string().default('v21.0'),
 
   // Object Storage
-  STORAGE_PROVIDER: z.enum(['local', 's3', 'r2']).default('local'),
+  STORAGE_PROVIDER: z.enum(['local', 'r2']).default('local'),
   STORAGE_LOCAL_DIR: z.string().default('./storage'),
-  STORAGE_BUCKET: z.string().default('evolvr-assets'),
-  STORAGE_ENDPOINT: z.string().default(''),
-  STORAGE_ACCESS_KEY: z.string().default(''),
-  STORAGE_SECRET_KEY: z.string().default(''),
-  STORAGE_REGION: z.string().default('auto'),
-  STORAGE_PUBLIC_URL: z.string().default(''),
+  R2_ACCOUNT_ID: z.string().default(''),
+  R2_ACCESS_KEY_ID: z.string().default(''),
+  R2_SECRET_ACCESS_KEY: z.string().default(''),
+  R2_BUCKET_NAME: z.string().default('evolvr-media'),
 
   // Media Generation
   MEDIA_PROVIDER: z.enum(['stub', 'openai-dall-e', 'stability-ai', 'pollinations', 'lmstudio']).default('stub'),

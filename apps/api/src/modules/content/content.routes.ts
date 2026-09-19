@@ -490,10 +490,11 @@ Provide an improved prompt.`;
     if (!data) throw new Error('No file uploaded');
 
     const buffer = await data.toBuffer();
-    const storageAdapter = new LocalStorageAdapter();
+    const storageAdapter = getStorageAdapter();
     const ext = path.extname(data.filename) || '.jpg';
     const filename = `manual_${ideaId}_${Date.now()}${ext}`;
-    const storageUrl = await storageAdapter.saveFile(filename, buffer);
+    const objectKey = `users/${(request as any).user.id}/uploads/${filename}`;
+    const storageUrl = await storageAdapter.saveFile(objectKey, buffer);
 
     const existingAsset = await sql`SELECT id FROM content_assets WHERE content_idea_id = ${ideaId} AND source = 'MANUALLY_ADDED' LIMIT 1`;
     if (existingAsset.length > 0) {

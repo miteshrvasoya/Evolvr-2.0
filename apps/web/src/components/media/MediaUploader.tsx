@@ -96,7 +96,7 @@ export function MediaUploader({ contentIdeaId, mediaRequirement, onUploadComplet
       const baseUrl = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001').replace('localhost', '127.0.0.1');
       
       // 1. Get presigned URLs
-      const presignedRes = await fetch(`${baseUrl}/api/media/presigned-urls`, {
+      const presignedRes = await fetch(`${baseUrl}/api/media/upload-url`, {
         method: 'POST',
         headers: { 
           'Authorization': `Bearer ${token}`,
@@ -105,7 +105,7 @@ export function MediaUploader({ contentIdeaId, mediaRequirement, onUploadComplet
         body: JSON.stringify({
           contentIdeaId,
           mediaRequirementId: mediaRequirement.id,
-          files: files.map(f => ({ filename: f.file.name, mimetype: f.file.type }))
+          files: files.map(f => ({ filename: f.file.name, mimetype: f.file.type, size: f.file.size }))
         }),
       });
 
@@ -117,7 +117,7 @@ export function MediaUploader({ contentIdeaId, mediaRequirement, onUploadComplet
       const { urls } = await presignedRes.json();
       
       // 2. Upload files to S3 directly (or local fallback)
-      const uploadedFiles: { storageUrl: string; mimetype: string }[] = [];
+      const uploadedFiles: { key: string; mimetype: string }[] = [];
       for (let i = 0; i < files.length; i++) {
         const fileObj = files[i];
         const urlObj = urls[i];
@@ -135,7 +135,7 @@ export function MediaUploader({ contentIdeaId, mediaRequirement, onUploadComplet
         }
         
         uploadedFiles.push({
-          storageUrl: urlObj.storageUrl,
+          key: urlObj.key,
           mimetype: fileObj.file.type
         });
       }
@@ -169,7 +169,7 @@ export function MediaUploader({ contentIdeaId, mediaRequirement, onUploadComplet
         description: `Your media has been attached to the content.`,
       });
 
-      onUploadComplete(data.assetId, data.storageUrl);
+      onUploadComplete(data.assetId, data.key);
     } catch (error: any) {
       toast({
         variant: 'destructive',

@@ -1,23 +1,24 @@
 import { env } from '../../config/env.js';
 import { LocalStorageAdapter } from './local.adapter.js';
-import { S3StorageAdapter } from './s3.adapter.js';
+import { R2StorageProvider } from './r2.provider.js';
 
-export interface StorageAdapter {
+export interface ObjectStorageService {
   saveFile(filename: string, buffer: Buffer): Promise<string>;
   getFile(filename: string): Promise<Buffer>;
   deleteFile(filename: string): Promise<void>;
   generatePresignedUrl(filename: string, contentType?: string): Promise<{ uploadUrl: string; storageUrl: string }>;
+  generateDownloadUrl(key: string, expiresIn?: number): Promise<string>;
+  objectExists(key: string): Promise<boolean>;
 }
 
-let storageInstance: StorageAdapter | null = null;
+let storageInstance: ObjectStorageService | null = null;
 
-export function getStorageAdapter(): StorageAdapter {
+export function getStorageAdapter(): ObjectStorageService {
   if (storageInstance) return storageInstance;
 
   switch (env.STORAGE_PROVIDER) {
-    case 's3':
     case 'r2':
-      storageInstance = new S3StorageAdapter();
+      storageInstance = new R2StorageProvider();
       break;
     case 'local':
     default:

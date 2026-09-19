@@ -3,29 +3,35 @@ import { sql } from '../../db/client.js';
 import { getStorageAdapter } from '../storage/index.js';
 import { randomUUID } from 'crypto';
 import path from 'path';
+import { env } from '../../config/env.js';
+
+const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
+const MAX_VIDEO_SIZE = 50 * 1024 * 1024; // 50MB
+const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/quicktime'];
 
 export default async function mediaRoutes(app: FastifyInstance) {
   const storageAdapter = getStorageAdapter();
 
   app.addHook('onRequest', app.authenticate);
 
-  app.post('/media/presigned-urls', async (request, reply) => {
+  app.post('/media/upload-url', async (request, reply) => {
     const { contentIdeaId, mediaRequirementId, files } = request.body as {
       contentIdeaId: string;
       mediaRequirementId: string;
-      files: { filename: string; mimetype: string }[];
+      files: { filename: string; mimetype: string; size?: number }[];
     };
 
     if (!contentIdeaId || !mediaRequirementId || !files || !files.length) {
       return reply.code(400).send({ error: 'Missing required fields' });
     }
 
+    const userId = (request as any).user.id;
     const reqs = await sql`
       SELECT mr.*, ci.social_account_id
       FROM media_requirements mr
       JOIN content_ideas ci ON ci.id = mr.content_idea_id
       JOIN social_accounts sa ON sa.id = ci.social_account_id
-      WHERE mr.id = ${mediaRequirementId} AND sa.user_id = ${(request as any).user.id}
+      WHERE mr.id = ${mediaRequirementId} AND sa.user_id = ${userId}
     `;
 
     if (!reqs.length) {
@@ -37,12 +43,25 @@ export default async function mediaRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'Only Carousel posts support multiple files' });
     }
 
+    for (const file of files) {
+      if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
+        return reply.code(400).send({ error: `Unsupported mime type: ${file.mimetype}` });
+      }
+      if (file.size) {
+        const maxSize = file.mimetype.startsWith('video') ? MAX_VIDEO_SIZE : MAX_IMAGE_SIZE;
+        if (file.size > maxSize) {
+          return reply.code(400).send({ error: `File size exceeds limit for ${file.filename}` });
+        }
+      }
+    }
+
     const urls = await Promise.all(
       files.map(async (file) => {
         const ext = path.extname(file.filename) || (file.mimetype.includes('video') ? '.mp4' : '.jpg');
-        const filename = `media_manual_${req.id}_${randomUUID()}${ext}`;
-        const { uploadUrl, storageUrl } = await storageAdapter.generatePresignedUrl(filename, file.mimetype);
-        return { uploadUrl, storageUrl, mimetype: file.mimetype };
+        // Secure object key structure
+        const objectKey = `users/${userId}/uploads/${randomUUID()}${ext}`;
+        const { uploadUrl, storageUrl } = await storageAdapter.generatePresignedUrl(objectKey, file.mimetype);
+        return { uploadUrl, key: storageUrl, mimetype: file.mimetype };
       })
     );
 
@@ -78,19 +97,20 @@ export default async function mediaRoutes(app: FastifyInstance) {
     const { contentIdeaId, mediaRequirementId, files } = request.body as {
       contentIdeaId: string;
       mediaRequirementId: string;
-      files: { storageUrl: string; mimetype: string }[];
+      files: { key: string; mimetype: string }[];
     };
 
     if (!contentIdeaId || !mediaRequirementId || !files || !files.length) {
       return reply.code(400).send({ error: 'Missing required fields' });
     }
 
+    const userId = (request as any).user.id;
     const reqs = await sql`
       SELECT mr.*, ci.social_account_id
       FROM media_requirements mr
       JOIN content_ideas ci ON ci.id = mr.content_idea_id
       JOIN social_accounts sa ON sa.id = ci.social_account_id
-      WHERE mr.id = ${mediaRequirementId} AND sa.user_id = ${(request as any).user.id}
+      WHERE mr.id = ${mediaRequirementId} AND sa.user_id = ${userId}
     `;
 
     if (!reqs.length) {
@@ -98,7 +118,7 @@ export default async function mediaRoutes(app: FastifyInstance) {
     }
 
     const req = reqs[0];
-    const uploadedAssets: { assetId: string; storageUrl: string }[] = [];
+    const uploadedAssets: { assetId: string; key: string }[] = [];
 
     await sql.begin(async (sql) => {
       await sql`
@@ -111,13 +131,13 @@ export default async function mediaRoutes(app: FastifyInstance) {
         const assetId = randomUUID();
         await sql`
           INSERT INTO content_assets
-            (id, content_idea_id, media_requirement_id, asset_type, storage_url, mime_type, 
+            (id, content_idea_id, media_requirement_id, asset_type, object_key, storage_provider, mime_type, 
              generation_status, source, asset_status, uploaded_by)
           VALUES
-            (${assetId}, ${req.contentIdeaId}, ${req.id}, ${req.mediaType}, ${file.storageUrl}, ${file.mimetype},
-             'generated', 'USER_UPLOADED', 'ACTIVE', ${(request as any).user.id})
+            (${assetId}, ${req.contentIdeaId}, ${req.id}, ${req.mediaType}, ${file.key}, ${env.STORAGE_PROVIDER}, ${file.mimetype},
+             'generated', 'USER_UPLOADED', 'ACTIVE', ${userId})
         `;
-        uploadedAssets.push({ assetId, storageUrl: file.storageUrl });
+        uploadedAssets.push({ assetId, key: file.key });
       }
 
       await sql`
@@ -149,9 +169,67 @@ export default async function mediaRoutes(app: FastifyInstance) {
     return { 
       success: true, 
       assetId: uploadedAssets[0].assetId,
-      storageUrl: uploadedAssets[0].storageUrl,
+      key: uploadedAssets[0].key,
       assets: uploadedAssets 
     };
+  });
+
+  app.get('/media/:id/url', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const userId = (request as any).user.id;
+    
+    const assets = await sql`
+      SELECT ca.* 
+      FROM content_assets ca
+      JOIN content_ideas ci ON ci.id = ca.content_idea_id
+      JOIN social_accounts sa ON sa.id = ci.social_account_id
+      WHERE ca.id = ${id} AND sa.user_id = ${userId}
+    `;
+
+    if (!assets.length) return reply.code(404).send({ error: 'Asset not found or unauthorized' });
+    
+    const asset = assets[0];
+    const objectKey = asset.object_key || asset.storage_url; // Fallback for old assets
+    
+    if (!objectKey) return reply.code(404).send({ error: 'Asset has no storage key' });
+
+    const url = await storageAdapter.generateDownloadUrl(objectKey, 600);
+    return { success: true, url };
+  });
+
+  app.delete('/media/:id', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const userId = (request as any).user.id;
+    
+    const assets = await sql`
+      SELECT ca.* 
+      FROM content_assets ca
+      JOIN content_ideas ci ON ci.id = ca.content_idea_id
+      JOIN social_accounts sa ON sa.id = ci.social_account_id
+      WHERE ca.id = ${id} AND sa.user_id = ${userId}
+    `;
+
+    if (!assets.length) return reply.code(404).send({ error: 'Asset not found or unauthorized' });
+    
+    const asset = assets[0];
+    const objectKey = asset.object_key || asset.storage_url;
+    
+    if (objectKey) {
+      try {
+        await storageAdapter.deleteFile(objectKey);
+      } catch (err) {
+        app.log.error(`Failed to delete object key ${objectKey}:`, err);
+        // Continue to update DB even if storage deletion fails
+      }
+    }
+
+    await sql`
+      UPDATE content_assets 
+      SET asset_status = 'DELETED', updated_at = NOW() 
+      WHERE id = ${id}
+    `;
+
+    return { success: true };
   });
 
   app.post('/media/upload', async (request, reply) => {
@@ -278,6 +356,7 @@ export default async function mediaRoutes(app: FastifyInstance) {
             'id', ca.id,
             'source', ca.source,
             'status', ca.asset_status,
+            'key', ca.object_key,
             'storageUrl', ca.storage_url,
             'createdAt', ca.created_at
           ) ORDER BY ca.created_at DESC
