@@ -62,7 +62,8 @@ const captionSchema = z.object({
   caption: z.string(),
   hashtags: z.array(z.string()).max(10),
   altText: z.string().optional(),
-  imagePrompt: z.string().describe('Highly detailed image generation prompt for the cover image or static post.').optional(),
+  imagePrompt: z.string().describe('Highly detailed image generation prompt for the cover image or static post. Omit if format is carousel.').optional(),
+  carouselPrompts: z.array(z.string()).describe('Array of 3 to 10 highly detailed image generation prompts for each slide, if format is carousel. Each prompt must include consistent stylistic instructions.').optional(),
   videoScript: z.string().describe('Detailed shot-by-shot script if format is reel or story.').optional(),
 });
 
@@ -84,7 +85,8 @@ Rules for Caption:
 - Provide appropriate hashtags.
 
 Rules for Media Direction:
-- If format is static_post or carousel, provide a highly detailed 'imagePrompt' describing the exact visual composition, lighting, style, and subject.
+- If format is static_post, provide a highly detailed 'imagePrompt' describing the exact visual composition, lighting, style, and subject.
+- If format is carousel, OMIT 'imagePrompt' and provide 'carouselPrompts' (an array of 3 to 10 highly detailed prompts for each slide). Ensure stylistic consistency across all slide prompts (same art style, lighting, color palette).
 - If format is reel or story, provide a detailed 'videoScript' with a shot-by-shot breakdown (timecodes, visuals, audio/text overlays), AND provide an 'imagePrompt' for a high-quality cover image.`,
 
     userPrompt: `Concept: ${ctx.concept}

@@ -607,11 +607,15 @@ export default function ContentDetailPage({ params }: PageProps) {
                 <div className="flex items-center gap-2">
                   <Sparkles className="h-4 w-4 text-purple-500" />
                   <h2 className="text-sm font-bold">Image Prompts</h2>
-                  <span className="text-xs text-muted-foreground">({imagePrompts.length} version{imagePrompts.length !== 1 ? 's' : ''})</span>
+                  <span className="text-xs text-muted-foreground">({imagePrompts.length} total)</span>
                 </div>
-                {imagePrompts.map((p, i) => (
-                  <PromptCard key={p.id} prompt={p} isCurrent={i === 0} ideaId={id} onRefresh={handleRefresh} hasFailed={hasFailed} />
-                ))}
+                {imagePrompts.map((p, i) => {
+                  const latestVersion = imagePrompts[0]?.promptVersion;
+                  const isCurrent = p.promptVersion === latestVersion;
+                  return (
+                    <PromptCard key={p.id} prompt={p} isCurrent={isCurrent} ideaId={id} onRefresh={handleRefresh} hasFailed={hasFailed} />
+                  );
+                })}
               </div>
             )}
             {videoPrompts.length > 0 && (

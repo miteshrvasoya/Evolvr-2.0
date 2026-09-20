@@ -167,28 +167,57 @@ export class ContentAgent {
 
         // ── PROMPT PERSISTENCE: Always save prompt BEFORE attempting generation ──
         // Even if generation fails later, the prompt remains accessible.
-        if (initialStatus !== 'blocked' && captionData?.imagePrompt) {
-          const imagePromptText = captionData.imagePrompt;
-          const assetType = (idea.format === 'reel' || idea.format === 'story')
-            ? 'video_placeholder'
-            : 'image';
+        const isCarousel = idea.format === 'carousel';
+        const promptsToPersist = isCarousel 
+          ? (captionData?.carouselPrompts || []) 
+          : (captionData?.imagePrompt ? [captionData.imagePrompt] : []);
+
+        if (initialStatus !== 'blocked' && promptsToPersist.length > 0) {
+          const assetType = isCarousel ? 'carousel' : (idea.format === 'reel' || idea.format === 'story' ? 'video_placeholder' : 'image');
 
           await tracker.logEvent(stepId, 'PROMPT_PERSISTED', 'info',
-            `Persisting ${assetType} prompt for idea ${ideaId} (before generation)...`);
+            `Persisting ${promptsToPersist.length} ${assetType} prompt(s) for idea ${ideaId} (before generation)...`);
 
           const reqId = randomUUID();
           await sql`
             INSERT INTO media_requirements (id, content_idea_id, media_type, status)
-            VALUES (${reqId}, ${ideaId}, ${assetType}, 'PENDING')
+            VALUES (${reqId}, ${ideaId}, ${isCarousel ? 'CAROUSEL' : assetType}, 'PENDING')
           `;
 
-          const promptId = await this.assetService.persistPrompt({
-            contentIdeaId: ideaId,
-            mediaRequirementId: reqId,
-            assetType: assetType as any,
-            promptText: imagePromptText,
-            source: 'ai_generated',
-          });
+          // Persist each prompt and queue a generation job
+          for (let i = 0; i < promptsToPersist.length; i++) {
+            const promptText = promptsToPersist[i];
+            
+            // Note: If carousel, we could prepend slide info to the prompt text if needed for the model,
+            // but the system prompt instructed it to be cohesive.
+            const finalPromptText = isCarousel ? `[Slide ${i + 1}] ${promptText}` : promptText;
+
+            const promptId = await this.assetService.persistPrompt({
+              contentIdeaId: ideaId,
+              mediaRequirementId: reqId,
+              assetType: assetType as any,
+              promptText: finalPromptText,
+              source: 'ai_generated',
+            });
+
+            // ── ENQUEUE async media generation job ──
+            const idempotencyKey = `${ideaId}-${assetType}-${i + 1}`;
+            await queues.mediaGeneration.add(
+              'generate-asset',
+              {
+                contentIdeaId: ideaId,
+                promptId,
+                assetType,
+                attemptNumber: 1,
+                idempotencyKey,
+                agentRunId: runId,
+              },
+              {
+                jobId: `asset-${ideaId}-${assetType}-${i + 1}`,
+                delay: 500,
+              },
+            );
+          }
 
           // Update asset_generation_status to pending — generation queued but not yet started
           await sql`
@@ -197,29 +226,8 @@ export class ContentAgent {
             WHERE id = ${ideaId}
           `;
 
-          // ── ENQUEUE async media generation job ──
-          // This decouples content creation from asset generation.
-          // Content exists and is usable regardless of whether this job succeeds.
-          const idempotencyKey = `${ideaId}-${assetType}-1`;
-          await queues.mediaGeneration.add(
-            'generate-asset',
-            {
-              contentIdeaId: ideaId,
-              promptId,
-              assetType,
-              attemptNumber: 1,
-              idempotencyKey,
-              agentRunId: runId,
-            },
-            {
-              jobId: `asset-${ideaId}-${assetType}-1`,
-              // Small delay so content is fully committed before worker picks it up
-              delay: 500,
-            },
-          );
-
           await tracker.logEvent(stepId, 'MEDIA_GENERATION_QUEUED', 'info',
-            `Media generation job queued for idea ${ideaId} [${assetType}]. Generation will proceed asynchronously.`);
+            `Media generation job(s) queued for idea ${ideaId} [${assetType}]. Generation will proceed asynchronously.`);
         }
       }
 
