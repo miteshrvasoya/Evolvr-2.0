@@ -327,4 +327,26 @@ export class InstagramAdapter {
       unfollows,
     };
   }
+
+  async getAccountMedia(accessToken: string, platformAccountId: string, afterCursor?: string) {
+    const fields = 'id,caption,media_type,media_url,permalink,timestamp,username,thumbnail_url,children{media_url,media_type}';
+    let url = `${this.baseGraphUrl}/${platformAccountId}/media?fields=${fields}&limit=50&access_token=${accessToken}`;
+    
+    if (afterCursor) {
+      url += `&after=${afterCursor}`;
+    }
+
+    const { response, data } = await this.fetchWithLog(url);
+    if (!response.ok) {
+      if (data.error?.type === 'OAuthException') {
+        throw new Error(`AUTH_REQUIRED: ${data.error.message}`);
+      }
+      throw new Error(data.error?.message || 'Failed to fetch account media');
+    }
+
+    return {
+      data: data.data || [],
+      paging: data.paging || null,
+    };
+  }
 }

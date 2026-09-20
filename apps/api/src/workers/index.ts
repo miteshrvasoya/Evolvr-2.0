@@ -8,6 +8,7 @@ import { createResearchWorker } from './research.worker.js';
 import { createAnalyticsWorker } from './analytics.worker.js';
 import { createLearningWorker } from './learning.worker.js';
 import { createMediaWorker } from './media.worker.js';
+import { createInstagramSyncWorker } from './instagram-sync.worker.js';
 
 const workers: Worker[] = [];
 
@@ -23,6 +24,7 @@ export function startWorkers() {
   workers.push(createAnalyticsWorker());
   workers.push(createLearningWorker());
   workers.push(createMediaWorker());
+  workers.push(createInstagramSyncWorker());
 
   // Add more workers (content-generation, analytics, etc) here as needed...
   

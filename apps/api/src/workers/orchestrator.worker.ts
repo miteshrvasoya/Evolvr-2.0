@@ -21,59 +21,127 @@ export const createOrchestratorWorker = () => {
     try {
       console.log(`[OrchestratorWorker] Evaluating next action for account ${socialAccountId}`);
 
-      // STATE MACHINE:
-      // Phase 0: SCHEDULE HEALTH — flag missed schedules where media is now missing
-      // Phase 0.5: AUTONOMOUS SCHEDULING — schedule ready content if in autonomous mode
-      // Phase 1: PUBLISH — publish posts whose scheduled_at has arrived
-      // Phase 2: MEASURE — fetch analytics for recently published posts
-      // Phase 3: LEARN — synthesize insights from new analytics
-      // Phase 4: ADAPT — revise strategy if needed
-      // Phase 5: OBSERVE — run research if outdated
-      // Phase 6: CREATE — generate content if buffer is low
+      // ── Pre-Phase: Goal Health ────────────────────────────────────────────
+      const goals = await sql`
+        SELECT status, autonomy_level FROM admin_goals 
+        WHERE id = ${goalId} AND social_account_id = ${socialAccountId}
+      `;
+      if (goals.length === 0 || goals[0].status !== 'ACTIVE') {
+        await tracker.addLog(`Goal is not ACTIVE. Current status: ${goals[0]?.status}. Stopping orchestrator.`);
+        await tracker.completeStep(stepId, { action: 'none' });
+        await sql`UPDATE agent_runs SET status = 'completed', completed_at = NOW() WHERE id = ${agentRunId}`;
+        return { action: 'none' };
+      }
+      const autonomyLevel = goals[0].autonomy_level;
 
-      // ── Phase 0: Schedule Health Check ────────────────────────────────────
-      // For posts scheduled within the next 2 hours, verify media is ready.
-      // If media is missing, mark as MISSED and notify.
-      const upcomingSoon = await sql`
-        SELECT p.id, p.content_idea_id, p.scheduled_at
-        FROM posts p
-        WHERE p.social_account_id = ${socialAccountId}
-          AND p.schedule_status = 'SCHEDULED'
-          AND p.scheduled_at BETWEEN NOW() AND NOW() + INTERVAL '2 hours'
+      // ── Phase 1: SYNC ─────────────────────────────────────────────────────
+      // Has Instagram been synced recently? (e.g. in the last 12 hours)
+      const recentSyncs = await sql`
+        SELECT id FROM instagram_sync_runs 
+        WHERE social_account_id = ${socialAccountId}
+          AND status = 'COMPLETED'
+          AND completed_at > NOW() - INTERVAL '12 hours'
+        ORDER BY completed_at DESC LIMIT 1
+      `;
+      
+      const failedSyncs = await sql`
+        SELECT id FROM instagram_sync_runs 
+        WHERE social_account_id = ${socialAccountId}
+          AND status IN ('SYNCING', 'AUTH_REQUIRED')
+        ORDER BY started_at DESC LIMIT 1
       `;
 
-      for (const upcoming of upcomingSoon) {
-        const mediaReady = await schedulingService.isMediaReady(upcoming.contentIdeaId);
-        if (!mediaReady) {
-          await tracker.addLog(`⚠ Post ${upcoming.id} scheduled in <2h but media is missing — marking MISSED`);
-          await sql`
-            UPDATE posts
-            SET schedule_status = 'MISSED',
-                publish_failure_reason = 'Required media was unavailable at scheduled time',
-                updated_at = NOW()
-            WHERE id = ${upcoming.id}
-          `;
-          await sql`
-            UPDATE publish_jobs
-            SET status = 'CANCELLED', updated_at = NOW()
-            WHERE post_id = ${upcoming.id} AND status IN ('PENDING', 'RETRYING')
-          `;
-          await tracker.logEvent(stepId, 'SCHEDULE_MISSED', 'warn',
-            `Post ${upcoming.id} scheduled at ${upcoming.scheduledAt} missed: media not ready`,
-            { postId: upcoming.id, contentIdeaId: upcoming.contentIdeaId });
-        }
+      if (failedSyncs.length === 0 && recentSyncs.length === 0) {
+        await tracker.addLog('Instagram sync is outdated. Enqueuing Instagram Sync.');
+        await queues.instagramSync.add('sync-account', { socialAccountId, agentRunId, goalId, attemptNumber: 1 }, { jobId: `${agentRunId}-sync` });
+        await tracker.completeStep(stepId, { action: 'queued_sync' });
+        return { action: 'queued_sync' };
       }
 
-      // ── Phase 0.5: Autonomous Scheduling ─────────────────────────────────
-      // Only runs in 'autonomous' autonomy mode.
-      const goals = await sql`
-        SELECT autonomy_level FROM admin_goals
-        WHERE social_account_id = ${socialAccountId} AND is_active = true LIMIT 1
+      // ── Phase 2: ANALYZE ──────────────────────────────────────────────────
+      // Are there posts published > 24 hours ago that lack metrics in the last 24 hours?
+      const postsNeedingMetrics = await sql`
+        SELECT p.id FROM posts p
+        LEFT JOIN post_metrics pm ON p.id = pm.post_id 
+          AND pm.captured_at > NOW() - INTERVAL '24 hours'
+        WHERE p.social_account_id = ${socialAccountId} 
+        AND p.status = 'published'
+        AND p.published_at < NOW() - INTERVAL '24 hours'
+        AND pm.id IS NULL
+        LIMIT 1
       `;
-      const autonomyLevel = goals[0]?.autonomyLevel ?? 'supervised';
+      if (postsNeedingMetrics.length > 0) {
+        await tracker.addLog('Discovered published posts needing metrics. Enqueuing Analytics.');
+        await queues.analytics.add('fetch-analytics', { socialAccountId, agentRunId, goalId, attemptNumber: 1 }, { jobId: `${agentRunId}-analytics` });
+        await tracker.completeStep(stepId, { action: 'queued_analytics' });
+        return { action: 'queued_analytics' };
+      }
 
+      // ── Phase 3: LEARN ────────────────────────────────────────────────────
+      // Has it been > 3 days since the last learning observation?
+      const recentLearning = await sql`
+        SELECT id FROM learning_observations 
+        WHERE goal_id = ${goalId}
+        AND created_at > NOW() - INTERVAL '3 days'
+        LIMIT 1
+      `;
+      const totalMetrics = await sql`
+        SELECT COUNT(*) as c FROM post_metrics pm
+        JOIN posts p ON pm.post_id = p.id
+        WHERE p.social_account_id = ${socialAccountId}
+      `;
+      if (recentLearning.length === 0 && totalMetrics[0] && Number(totalMetrics[0].c) > 5) {
+        await tracker.addLog('Sufficient metrics found but no recent learning observations. Enqueuing Learning Analysis.');
+        await queues.learning.add('run-learning', { socialAccountId, agentRunId, goalId, attemptNumber: 1 }, { jobId: `${agentRunId}-learning` });
+        await tracker.completeStep(stepId, { action: 'queued_learning' });
+        return { action: 'queued_learning' };
+      }
+
+      // ── Phase 4: DECIDE (Strategy) ────────────────────────────────────────
+      const strategies = await sql`SELECT id FROM strategy_versions WHERE social_account_id = ${socialAccountId} AND status = 'active' LIMIT 1`;
+      let currentStrategy = strategies[0];
+
+      if (!currentStrategy) {
+        await tracker.addLog('No active strategy found. Enqueuing Strategy Revision.');
+        await queues.strategy.add('revise-strategy', { socialAccountId, agentRunId, goalId, attemptNumber: 1 }, { jobId: `${agentRunId}-strategy` });
+        await tracker.completeStep(stepId, { action: 'queued_strategy' });
+        return { action: 'queued_strategy' };
+      }
+
+      // ── Phase 5: OBSERVE (Research) ───────────────────────────────────────
+      const recentResearch = await sql`
+        SELECT id FROM research_runs 
+        WHERE social_account_id = ${socialAccountId}
+        AND created_at > NOW() - INTERVAL '7 days'
+        LIMIT 1
+      `;
+      if (recentResearch.length === 0) {
+        await tracker.addLog('Research is outdated (> 7 days). Enqueuing Research phase.');
+        await queues.research.add('run-research', { socialAccountId, agentRunId, goalId, attemptNumber: 1 }, { jobId: `${agentRunId}-research` });
+        await tracker.completeStep(stepId, { action: 'queued_research' });
+        return { action: 'queued_research' };
+      }
+
+      // ── Phase 6: EXECUTE (Content Generation) ─────────────────────────────
+      // Check content buffer
+      const draftedCount = await sql`
+        SELECT COUNT(*) as count FROM content_ideas 
+        WHERE social_account_id = ${socialAccountId} AND status = 'draft'
+      `;
+      if (draftedCount[0] && Number(draftedCount[0].count) < 5) {
+        await tracker.addLog(`Content buffer has ${draftedCount[0].count} drafts. Enqueuing Content generation.`);
+        await queues.contentGeneration.add('generate-content', {
+          socialAccountId,
+          agentRunId,
+          strategyVersionId: currentStrategy.id,
+          attemptNumber: 1
+        }, { jobId: `${agentRunId}-content` });
+        await tracker.completeStep(stepId, { action: 'queued_content' });
+        return { action: 'queued_content' };
+      }
+
+      // ── Phase 7: SCHEDULE ─────────────────────────────────────────────────
       if (autonomyLevel === 'autonomous') {
-        // Find ready content without an active schedule
         const readyContent = await sql`
           SELECT ci.id FROM content_ideas ci
           WHERE ci.social_account_id = ${socialAccountId}
@@ -92,7 +160,7 @@ export const createOrchestratorWorker = () => {
           const ideaIds = readyContent.map((r: any) => r.id);
           await schedulingAgent.generateBulkRecommendations(socialAccountId, ideaIds, agentRunId, stepId);
 
-          // Auto-accept recommendations in autonomous mode
+          // Auto-accept
           for (const ideaId of ideaIds) {
             try {
               const recs = await sql`
@@ -126,6 +194,7 @@ export const createOrchestratorWorker = () => {
         }
       }
 
+      // ── Phase 8: PUBLISH ──────────────────────────────────────────────────
       const postsToPublish = await sql`
         SELECT id FROM posts 
         WHERE social_account_id = ${socialAccountId} 
@@ -139,84 +208,6 @@ export const createOrchestratorWorker = () => {
         await queues.publishing.add('publish-post', { socialAccountId, agentRunId, goalId, postId: postsToPublish[0].id, attemptNumber: 1 }, { jobId: `${agentRunId}-publish-${postsToPublish[0].id}` });
         await tracker.completeStep(stepId, { action: 'queued_publishing' });
         return { action: 'queued_publishing' };
-      }
-      // Phase 2: Measure (Analytics)
-      // Are there posts published > 24 hours ago that lack metrics in the last 24 hours?
-      const postsNeedingMetrics = await sql`
-        SELECT p.id FROM posts p
-        LEFT JOIN post_metrics pm ON p.id = pm.post_id 
-          AND pm.captured_at > NOW() - INTERVAL '24 hours'
-        WHERE p.social_account_id = ${socialAccountId} 
-        AND p.status = 'published'
-        AND p.published_at < NOW() - INTERVAL '24 hours'
-        AND pm.id IS NULL
-        LIMIT 1
-      `;
-      if (postsNeedingMetrics.length > 0) {
-        await tracker.addLog('Discovered published posts needing metrics. Enqueuing Analytics.');
-        await queues.analytics.add('fetch-analytics', { socialAccountId, agentRunId, goalId, attemptNumber: 1 }, { jobId: `${agentRunId}-analytics` });
-        await tracker.completeStep(stepId, { action: 'queued_analytics' });
-        return { action: 'queued_analytics' };
-      }
-
-      // Phase 3: Learn
-      // Has it been > 3 days since the last strategic insight was generated?
-      const recentInsights = await sql`
-        SELECT id FROM strategic_insights 
-        WHERE social_account_id = ${socialAccountId}
-        AND created_at > NOW() - INTERVAL '3 days'
-        LIMIT 1
-      `;
-      // Check if we have any metrics at all to learn from
-      const totalMetrics = await sql`
-        SELECT COUNT(*) as c FROM post_metrics pm
-        JOIN posts p ON pm.post_id = p.id
-        WHERE p.social_account_id = ${socialAccountId}
-      `;
-      if (recentInsights.length === 0 && totalMetrics[0] && Number(totalMetrics[0].c) > 5) {
-        await tracker.addLog('Sufficient metrics found but no recent insights. Enqueuing Learning Analysis.');
-        await queues.learning.add('run-learning', { socialAccountId, agentRunId, goalId, attemptNumber: 1 }, { jobId: `${agentRunId}-learning` });
-        await tracker.completeStep(stepId, { action: 'queued_learning' });
-        return { action: 'queued_learning' };
-      }
-
-      // Phase 4: Adapt (Strategy)
-      const strategies = await sql`SELECT id, created_at FROM strategy_versions WHERE social_account_id = ${socialAccountId} AND status = 'active' LIMIT 1`;
-      let currentStrategy = strategies[0];
-
-      if (!currentStrategy) {
-        await tracker.addLog('No active strategy found. Enqueuing Strategy Revision.');
-        await queues.strategy.add('revise-strategy', { socialAccountId, agentRunId, goalId, attemptNumber: 1 }, { jobId: `${agentRunId}-strategy` });
-        await tracker.completeStep(stepId, { action: 'queued_strategy' });
-        return { action: 'queued_strategy' };
-      }
-
-      // Phase 5: Observe (Research)
-      const recentResearch = await sql`
-        SELECT id FROM research_runs 
-        WHERE social_account_id = ${socialAccountId}
-        AND created_at > NOW() - INTERVAL '7 days'
-        LIMIT 1
-      `;
-      if (recentResearch.length === 0) {
-        await tracker.addLog('Research is outdated (> 7 days). Enqueuing Research phase.');
-        await queues.research.add('run-research', { socialAccountId, agentRunId, goalId, attemptNumber: 1 }, { jobId: `${agentRunId}-research` });
-        await tracker.completeStep(stepId, { action: 'queued_research' });
-        return { action: 'queued_research' };
-      }
-
-      // Phase 6: Create (Content Generation)
-      const draftedCount = await sql`SELECT COUNT(*) as count FROM content_ideas WHERE social_account_id = ${socialAccountId} AND status = 'draft'`;
-      if (draftedCount[0] && Number(draftedCount[0].count) < 50) {
-        await tracker.addLog(`Content buffer has ${draftedCount[0].count} drafts. Enqueuing Content generation to build up to 50.`);
-        await queues.contentGeneration.add('generate-content', {
-          socialAccountId,
-          agentRunId,
-          strategyVersionId: currentStrategy.id,
-          attemptNumber: 1
-        }, { jobId: `${agentRunId}-content` });
-        await tracker.completeStep(stepId, { action: 'queued_content' });
-        return { action: 'queued_content' };
       }
 
       // All phases healthy

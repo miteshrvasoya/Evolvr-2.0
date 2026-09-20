@@ -387,6 +387,18 @@ export default async function dashboardRoutes(app: FastifyInstance) {
       LIMIT 20
     `;
 
+    // Agent status add-ons: Sync, Goal, Learning
+    const syncRuns = await sql`SELECT status, completed_at FROM instagram_sync_runs WHERE social_account_id = ${accountId} ORDER BY started_at DESC LIMIT 1`;
+    const syncStatus = syncRuns[0] ?? null;
+
+    const goalStatusRow = await sql`SELECT status FROM admin_goals WHERE social_account_id = ${accountId} ORDER BY created_at DESC LIMIT 1`;
+    const goalStatus = goalStatusRow[0]?.status ?? 'NO_GOAL';
+
+    const latestMetrics = await sql`SELECT captured_at FROM post_metrics pm JOIN posts p ON pm.post_id = p.id WHERE p.social_account_id = ${accountId} ORDER BY captured_at DESC LIMIT 1`;
+    const analyticsFreshness = latestMetrics[0]?.captured_at ?? null;
+
+    const learningObservations = await sql`SELECT * FROM learning_observations WHERE social_account_id = ${accountId} ORDER BY created_at DESC LIMIT 5`;
+
     return {
       success: true,
       data: {
@@ -400,6 +412,10 @@ export default async function dashboardRoutes(app: FastifyInstance) {
         scheduledJobs,
         recentErrors,
         recentApiLogs,
+        goalStatus,
+        syncStatus,
+        analyticsFreshness,
+        learningObservations,
         lastUpdated: new Date().toISOString(),
       },
     };

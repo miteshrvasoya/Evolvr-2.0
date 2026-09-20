@@ -22,6 +22,15 @@ export class StrategyAgent {
       const goal = goals[0];
       if (!goal) throw new Error('Goal not found');
 
+      // Fetch recent learning observations
+      const observations = await sql`
+        SELECT observation, evidence, confidence, source_post_ids
+        FROM learning_observations
+        WHERE goal_id = ${goalId}
+        ORDER BY created_at DESC
+        LIMIT 10
+      `;
+
       const context: BuildStrategyContext = {
         niche: profile.niche || 'General',
         valueProposition: profile.valueProposition || '',
@@ -33,7 +42,7 @@ export class StrategyAgent {
         target: String(goal.target),
         deadline: String(goal.deadline),
         accountMetrics: '[]',
-        strategicInsights: '[]',
+        strategicInsights: JSON.stringify(observations),
         researchFindings: '[]',
         experimentResults: '[]',
       };

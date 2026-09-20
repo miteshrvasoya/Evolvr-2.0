@@ -297,12 +297,12 @@ export default function AgentPage() {
       {/* ── Stat row ─────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: 'Decisions Made',   value: decisions.length,    sub: 'this session' },
-          { label: 'Avg Confidence',   value: `${avgConf}%`,       sub: 'across decisions', accent: 'text-emerald-600' },
+          { label: 'Goal Status',      value: status.goalStatus.replace(/_/g, ' '), sub: 'current objective' },
+          { label: 'Sync Status',      value: status.syncStatus?.status ?? 'Not Synced', sub: status.syncStatus?.completed_at ? formatDistanceToNow(new Date(status.syncStatus.completed_at), { addSuffix: true }) : '' },
+          { label: 'Analytics Data',   value: status.analyticsFreshness ? formatDistanceToNow(new Date(status.analyticsFreshness), { addSuffix: true }) : 'N/A', sub: 'last metrics capture' },
           { label: 'Strategy',         value: strategyData?.active ? `v${strategyData.active.versionNumber}` : 'None',
             sub: strategyData?.active ? `${(strategyData.active.confidence * 100).toFixed(0)}% confidence` : 'No active strategy',
             accent: strategyData?.active ? 'text-purple-600' : undefined },
-          { label: 'API Calls',        value: status.recentApiLogs?.length ?? 0, sub: 'recent outward' },
         ].map(({ label, value, sub, accent }) => (
           <Card key={label}>
             <CardContent className="p-5">
@@ -407,6 +407,40 @@ export default function AgentPage() {
                       </div>
                     )}
                   </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Learning Observations panel */}
+          {status.learningObservations && status.learningObservations.length > 0 && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <Brain className="h-4 w-4 text-primary" />
+                  What Evolvr Is Learning
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {status.learningObservations.map((obs) => (
+                    <div key={obs.id} className="p-3 rounded-lg bg-emerald-50/50 border border-emerald-100">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">
+                          {obs.observation_type.replace(/_/g, ' ')}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground ml-auto">
+                          {formatDistanceToNow(new Date(obs.created_at), { addSuffix: true })}
+                        </span>
+                      </div>
+                      <p className="text-sm font-medium text-foreground">{obs.observation}</p>
+                      {obs.evidence?.text && (
+                        <p className="text-xs text-muted-foreground mt-1.5 border-l-2 border-emerald-200 pl-2">
+                          {obs.evidence.text}
+                        </p>
+                      )}
+                    </div>
+                  ))}
                 </div>
               </CardContent>
             </Card>

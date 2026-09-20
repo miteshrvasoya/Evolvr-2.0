@@ -22,6 +22,7 @@ export const queues = {
   engagement: new Queue('engagement', { connection: redisConnection, ...defaultOpts }),
   learning: new Queue('learning', { connection: redisConnection, ...defaultOpts }),
   notifications: new Queue('notifications', { connection: redisConnection, ...defaultOpts }),
+  instagramSync: new Queue('instagram-sync', { connection: redisConnection, ...defaultOpts }),
 };
 
 export async function closeQueues() {

@@ -55,6 +55,17 @@ export interface AgentStatus {
     latencyMs: number;
     createdAt: string;
   }>;
+  goalStatus: string;
+  syncStatus: { status: string; completed_at: string | null } | null;
+  analyticsFreshness: string | null;
+  learningObservations: Array<{
+    id: string;
+    observation_type: string;
+    observation: string;
+    evidence: any;
+    confidence: number;
+    created_at: string;
+  }>;
   lastUpdated: string;
 }
 
