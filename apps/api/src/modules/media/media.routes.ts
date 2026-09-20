@@ -200,9 +200,16 @@ export default async function mediaRoutes(app: FastifyInstance) {
         const rec = await schedulingAgent.generateRecommendation(req.contentIdeaId, accountId);
         
         // 2. Schedule the post
-        await scheduler.schedulePost(req.contentIdeaId, accountId, rec.recommendedAt);
+        await scheduler.schedulePost(req.contentIdeaId, accountId, rec.recommendedAt, rec.id);
         
         // 3. Notify user
+        const formatter = new Intl.DateTimeFormat('en-US', {
+          timeZone: rec.timezone,
+          dateStyle: 'medium',
+          timeStyle: 'short',
+        });
+        const formattedDate = formatter.format(rec.recommendedAt);
+
         await sql`
           INSERT INTO notifications (user_id, type, priority, title, message, action_url)
           VALUES (
@@ -210,7 +217,7 @@ export default async function mediaRoutes(app: FastifyInstance) {
             'POST_SCHEDULED', 
             'normal', 
             'Post Auto-Scheduled', 
-            'AI has automatically scheduled your manually uploaded post for ' || ${rec.recommendedAt.toLocaleString()} || ' based on engagement trends.', 
+            'AI has automatically scheduled your manually uploaded post for ' || ${formattedDate} || ' (' || ${rec.timezone} || ') based on engagement trends.', 
             '/dashboard/calendar'
           )
         `;

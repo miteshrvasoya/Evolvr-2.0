@@ -1,45 +1,33 @@
 import { sql } from '../../db/client.js';
 import { randomUUID } from 'crypto';
+import { SchedulingService } from '../scheduling/scheduling.service.js';
+import { DateTime } from 'luxon';
+
+const schedulingService = new SchedulingService();
 
 export class ContentScheduler {
-  async schedulePost(contentIdeaId: string, accountId: string, requestedScheduledAt?: Date) {
-    // 1. Fetch Idea
-    const ideas = await sql`SELECT * FROM content_ideas WHERE id = ${contentIdeaId} AND status IN ('draft', 'waiting_approval')`;
-    const idea = ideas[0];
-    
-    if (!idea) throw new Error('Valid draft content idea not found');
-
-    // 2. Determine best time window
+  async schedulePost(contentIdeaId: string, accountId: string, requestedScheduledAt?: Date, recommendationId?: string) {
+    // 1. Determine best time window
     let scheduledAt = requestedScheduledAt;
+    const prefs = await schedulingService.getPreferences(accountId);
+    const tz = (prefs?.timezone ?? 'UTC') as string;
+
     if (!scheduledAt) {
-      // (Simplified logic: schedule 1 day from now at 10 AM)
-      scheduledAt = new Date();
-      scheduledAt.setDate(scheduledAt.getDate() + 1);
-      scheduledAt.setHours(10, 0, 0, 0);
+      // (Simplified logic: schedule 1 day from now at 10 AM in user's timezone)
+      scheduledAt = DateTime.now().setZone(tz).plus({ days: 1 }).set({ hour: 10, minute: 0, second: 0, millisecond: 0 }).toUTC().toJSDate();
     }
 
-    // 3. Create Post Record
-    const postId = randomUUID();
-    const idempotencyKey = `publish:${accountId}:${idea.id}:${scheduledAt.getTime()}`;
-
-    await sql.begin(async (sql) => {
-      // Update Idea status
-      await sql`UPDATE content_ideas SET status = 'scheduled' WHERE id = ${idea.id}`;
-
-      // Insert Post
-      await sql`
-        INSERT INTO posts (
-          id, social_account_id, content_idea_id, caption, media_type, scheduled_at, status, strategy_version_id, idempotency_key, schedule_status
-        ) VALUES (
-          ${postId}, ${accountId}, ${idea.id}, ${idea.caption}, ${idea.format}, ${scheduledAt}, 'scheduled', ${idea.strategyVersionId}, ${idempotencyKey}, 'SCHEDULED'
-        )
-      `;
-
-      // 4. Enqueue BullMQ Job
-      // In full implementation:
-      // await queues.publishing.add('publish', { postId }, { delay: scheduledAt.getTime() - Date.now() })
+    // 2. Delegate to the unified scheduling service
+    const result = await schedulingService.createSchedule({
+      contentIdeaId,
+      accountId,
+      scheduledAt,
+      timezone: tz,
+      source: 'SYSTEM',
+      actor: 'system',
+      recommendationId,
     });
 
-    return { success: true, postId, scheduledAt };
+    return { success: true, postId: result.postId, scheduledAt: result.scheduledAt };
   }
 }
