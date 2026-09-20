@@ -8,6 +8,7 @@ import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import { toast } from '@/lib/hooks/use-toast';
 import { MediaRequirement } from '@/lib/types/content';
+import { apiClient } from '@/lib/api-client';
 
 interface MediaUploaderProps {
   contentIdeaId: string;
@@ -92,31 +93,17 @@ export function MediaUploader({ contentIdeaId, mediaRequirement, onUploadComplet
         setProgress(p => Math.min(p + 5, 90));
       }, 300);
 
-      const token = document.cookie.match(/(?:^|;\s*)auth_token=([^;]+)/)?.[1] || localStorage.getItem('auth_token');
-      const baseUrl = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001').replace('localhost', '127.0.0.1');
-      
       // 1. Get presigned URLs
-      const presignedRes = await fetch(`${baseUrl}/api/media/upload-url`, {
-        method: 'POST',
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json' 
-        },
-        body: JSON.stringify({
-          contentIdeaId,
-          mediaRequirementId: mediaRequirement.id,
-          files: files.map(f => ({ filename: f.file.name, mimetype: f.file.type, size: f.file.size }))
-        }),
+      const presignedData = await apiClient.post<{ urls: any[], mediaRequirementId: string }>('/api/media/upload-url', {
+        contentIdeaId,
+        mediaRequirementId: mediaRequirement.id,
+        files: files.map(f => ({ filename: f.file.name, mimetype: f.file.type, size: f.file.size }))
       });
-
-      if (!presignedRes.ok) {
-        const err = await presignedRes.json();
-        throw new Error(err.error || 'Failed to get upload URLs');
-      }
-
-      const { urls } = await presignedRes.json();
       
-      // 2. Upload files to S3 directly (or local fallback)
+      const { urls, mediaRequirementId: actualReqId } = presignedData;
+      const reqIdToUse = actualReqId || mediaRequirement.id;
+      
+      // 2. Upload files to S3 directly
       const uploadedFiles: { key: string; mimetype: string }[] = [];
       for (let i = 0; i < files.length; i++) {
         const fileObj = files[i];
@@ -131,7 +118,7 @@ export function MediaUploader({ contentIdeaId, mediaRequirement, onUploadComplet
         });
 
         if (!uploadRes.ok) {
-          throw new Error(`Failed to upload ${fileObj.file.name}`);
+          throw new Error(`Failed to upload ${fileObj.file.name} to cloud storage`);
         }
         
         uploadedFiles.push({
@@ -141,36 +128,23 @@ export function MediaUploader({ contentIdeaId, mediaRequirement, onUploadComplet
       }
 
       // 3. Confirm upload
-      const confirmRes = await fetch(`${baseUrl}/api/media/confirm-upload`, {
-        method: 'POST',
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          contentIdeaId,
-          mediaRequirementId: mediaRequirement.id,
-          files: uploadedFiles
-        }),
+      const confirmData = await apiClient.post<any>('/api/media/confirm-upload', {
+        contentIdeaId,
+        mediaRequirementId: reqIdToUse,
+        files: uploadedFiles
       });
 
       clearInterval(progressInterval);
       setProgress(100);
-
-      if (!confirmRes.ok) {
-        const err = await confirmRes.json();
-        throw new Error(err.error || 'Failed to confirm upload');
-      }
-
-      const data = await confirmRes.json();
       
       toast({
         title: 'Upload Successful',
         description: `Your media has been attached to the content.`,
       });
 
-      onUploadComplete(data.assetId, data.key);
+      onUploadComplete(confirmData.assetId, confirmData.key);
     } catch (error: any) {
+      console.error('Media upload error:', error);
       toast({
         variant: 'destructive',
         title: 'Upload Failed',

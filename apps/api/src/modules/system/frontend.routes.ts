@@ -15,11 +15,11 @@ export default async function dashboardRoutes(app: FastifyInstance) {
   app.get('/dashboard/overview', async (request: any, reply) => {
     const { id: userId } = request.user;
     const accountId = await getPrimaryAccount(userId);
-    
+
     if (!accountId) {
-      return { 
-        success: true, 
-        data: { 
+      return {
+        success: true,
+        data: {
           accountMetrics: { followers: 0, reach: 0, profileVisits: 0, impressions: 0 },
           trends: { followers: 0, reach: 0, profileVisits: 0, impressions: 0 },
           engagementRate: 0,
@@ -29,7 +29,7 @@ export default async function dashboardRoutes(app: FastifyInstance) {
           metricsHistory: [],
           agentRunSummary: { total: 0, completed: 0, successRate: 0, lastRunAt: null },
           recentWins: [],
-        } 
+        }
       };
     }
 
@@ -39,7 +39,7 @@ export default async function dashboardRoutes(app: FastifyInstance) {
       WHERE social_account_id = ${accountId}
       ORDER BY captured_at DESC LIMIT 2
     `;
-    
+
     // Auto-sync if no metrics or older than 1 hour
     let accountMetrics = metricsRaw[0] || { followers: 0, reach: 0, profile_visits: 0, impressions: 0 };
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
@@ -52,7 +52,7 @@ export default async function dashboardRoutes(app: FastifyInstance) {
           const igAdapter = getInstagramAdapter();
           const insights = await igAdapter.getAccountInsights(accessToken, acc.platformAccountId);
           const profile = await igAdapter.getAccountProfile(accessToken, acc.platformAccountId);
-          
+
           const result = await sql`
             INSERT INTO account_metrics (
               social_account_id, followers, following,
@@ -187,7 +187,7 @@ export default async function dashboardRoutes(app: FastifyInstance) {
     // Fetch active goal
     const goals = await sql`SELECT * FROM admin_goals WHERE social_account_id = ${accountId} AND is_active = true LIMIT 1`;
     const goal = goals[0] || null;
-    
+
     // Fetch upcoming posts (scheduled + awaiting approval)
     const upcomingPosts = await sql`
       SELECT * FROM posts
@@ -319,16 +319,16 @@ export default async function dashboardRoutes(app: FastifyInstance) {
     const state: string = (() => {
       if (!r) return 'IDLE';
       switch (runStatus) {
-        case 'running':    return 'RUNNING';
-        case 'waiting':    return 'WAITING';
-        case 'paused':     return 'PAUSED';
-        case 'retrying':   return 'RETRYING';
-        case 'blocked':    return 'BLOCKED';
-        case 'failed':     return 'FAILED';
-        case 'completed':  return 'COMPLETED';
-        case 'cancelled':  return 'CANCELLED';
-        case 'queued':     return 'QUEUED';
-        default:           return 'IDLE';
+        case 'running': return 'RUNNING';
+        case 'waiting': return 'WAITING';
+        case 'paused': return 'PAUSED';
+        case 'retrying': return 'RETRYING';
+        case 'blocked': return 'BLOCKED';
+        case 'failed': return 'FAILED';
+        case 'completed': return 'COMPLETED';
+        case 'cancelled': return 'CANCELLED';
+        case 'queued': return 'QUEUED';
+        default: return 'IDLE';
       }
     })();
 
@@ -429,7 +429,7 @@ export default async function dashboardRoutes(app: FastifyInstance) {
       ORDER BY created_at DESC 
       LIMIT 20
     `;
-    
+
     return {
       success: true,
       data: notifications

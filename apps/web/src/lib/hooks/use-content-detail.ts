@@ -16,6 +16,7 @@ export interface ContentAsset {
   attemptStatus?: string;
   errorCategory?: string;
   errorMessage?: string;
+  assetStatus?: string;
   createdAt: string;
 }
 

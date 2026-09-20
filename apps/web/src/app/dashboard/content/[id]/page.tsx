@@ -381,15 +381,15 @@ export default function ContentDetailPage({ params }: PageProps) {
   const assets      = content.assets ?? [];
   const prompts     = content.prompts ?? [];
   const mediaReqs   = content.mediaRequirements ?? [];
-  const activeImages = assets.filter(a => (a.assetType === 'image' || a.assetType === 'carousel' || a.assetType === 'CAROUSEL') && a.status === 'ACTIVE');
+  const activeImages = assets.filter(a => ['image', 'IMAGE', 'carousel', 'CAROUSEL'].includes(a.assetType) && (a.assetStatus === 'ACTIVE' || (a as any).status === 'ACTIVE'));
   if (activeImages.length === 0) {
-    const fallback = assets.find(a => a.assetType === 'image' || a.assetType === 'carousel');
+    const fallback = assets.find(a => ['image', 'IMAGE', 'carousel', 'CAROUSEL'].includes(a.assetType));
     if (fallback) activeImages.push(fallback);
   }
-  const imageReq    = mediaReqs.find(r => r.mediaType === 'image' || r.mediaType === 'CAROUSEL' || r.mediaType === 'carousel');
-  const videoReq    = mediaReqs.find(r => r.mediaType === 'video_placeholder' || r.mediaType === 'video' || r.mediaType === 'VIDEO');
-  const imagePrompts = prompts.filter(p => p.assetType === 'image' || p.assetType === 'carousel');
-  const videoPrompts = prompts.filter(p => p.assetType === 'video_placeholder' || p.assetType === 'VIDEO');
+  const imageReq    = mediaReqs.find(r => ['image', 'IMAGE', 'carousel', 'CAROUSEL'].includes(r.mediaType));
+  const videoReq    = mediaReqs.find(r => ['video', 'VIDEO', 'video_placeholder'].includes(r.mediaType));
+  const imagePrompts = prompts.filter(p => p.assetType.toLowerCase() === 'image' || p.assetType.toLowerCase() === 'carousel');
+  const videoPrompts = prompts.filter(p => p.assetType.toLowerCase() === 'video_placeholder' || p.assetType.toLowerCase() === 'video');
   const latestAttempt = attempts[0];
   const hasError = latestAttempt?.status === 'failed';
 
@@ -537,9 +537,13 @@ export default function ContentDetailPage({ params }: PageProps) {
               </div>
             )}
 
-            {uploading && imageReq && (
+            {uploading && (
               <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
-                <MediaUploader contentIdeaId={id} mediaRequirement={imageReq} onUploadComplete={() => { setUploading(false); handleRefresh(); }} />
+                <MediaUploader 
+                  contentIdeaId={id} 
+                  mediaRequirement={imageReq ?? { id: 'new', mediaType: 'IMAGE' } as any} 
+                  onUploadComplete={() => { setUploading(false); handleRefresh(); }} 
+                />
                 <Button variant="ghost" size="sm" onClick={() => setUploading(false)} className="text-xs w-full">Cancel</Button>
               </div>
             )}

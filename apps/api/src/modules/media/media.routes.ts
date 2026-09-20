@@ -26,19 +26,38 @@ export default async function mediaRoutes(app: FastifyInstance) {
     }
 
     const userId = (request as any).user.id;
-    const reqs = await sql`
-      SELECT mr.*, ci.social_account_id
-      FROM media_requirements mr
-      JOIN content_ideas ci ON ci.id = mr.content_idea_id
-      JOIN social_accounts sa ON sa.id = ci.social_account_id
-      WHERE mr.id = ${mediaRequirementId} AND sa.user_id = ${userId}
-    `;
+    let req: any;
 
-    if (!reqs.length) {
-      return reply.code(404).send({ error: 'Media requirement not found or unauthorized' });
+    if (mediaRequirementId === 'new') {
+      // Create a new media requirement on the fly
+      const ideas = await sql`
+        SELECT ci.id, ci.social_account_id FROM content_ideas ci
+        JOIN social_accounts sa ON sa.id = ci.social_account_id
+        WHERE ci.id = ${contentIdeaId} AND sa.user_id = ${userId}
+      `;
+      if (!ideas.length) return reply.code(404).send({ error: 'Content idea not found or unauthorized' });
+      
+      const newReq = await sql`
+        INSERT INTO media_requirements (content_idea_id, media_type, status)
+        VALUES (${contentIdeaId}, 'IMAGE', 'PENDING')
+        RETURNING *
+      `;
+      req = newReq[0];
+    } else {
+      const reqs = await sql`
+        SELECT mr.*, ci.social_account_id
+        FROM media_requirements mr
+        JOIN content_ideas ci ON ci.id = mr.content_idea_id
+        JOIN social_accounts sa ON sa.id = ci.social_account_id
+        WHERE mr.id = ${mediaRequirementId} AND sa.user_id = ${userId}
+      `;
+
+      if (!reqs.length) {
+        return reply.code(404).send({ error: 'Media requirement not found or unauthorized' });
+      }
+      req = reqs[0];
     }
 
-    const req = reqs[0];
     if (req.mediaType !== 'CAROUSEL' && files.length > 1) {
       return reply.code(400).send({ error: 'Only Carousel posts support multiple files' });
     }
@@ -65,7 +84,7 @@ export default async function mediaRoutes(app: FastifyInstance) {
       })
     );
 
-    return { success: true, urls };
+    return { success: true, data: { urls, mediaRequirementId: req.id } };
   });
 
   app.put('/media/local-upload', async (request, reply) => {
@@ -168,9 +187,11 @@ export default async function mediaRoutes(app: FastifyInstance) {
 
     return { 
       success: true, 
-      assetId: uploadedAssets[0].assetId,
-      key: uploadedAssets[0].key,
-      assets: uploadedAssets 
+      data: {
+        assetId: uploadedAssets[0].assetId,
+        key: uploadedAssets[0].key,
+        assets: uploadedAssets 
+      }
     };
   });
 
