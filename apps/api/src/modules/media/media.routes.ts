@@ -4,6 +4,8 @@ import { getStorageAdapter } from '../storage/index.js';
 import { randomUUID } from 'crypto';
 import path from 'path';
 import { env } from '../../config/env.js';
+import { SchedulingAgent } from '../scheduling/scheduling.agent.js';
+import { ContentScheduler } from '../content/scheduler.js';
 
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
 const MAX_VIDEO_SIZE = 50 * 1024 * 1024; // 50MB
@@ -80,7 +82,8 @@ export default async function mediaRoutes(app: FastifyInstance) {
         // Secure object key structure
         const objectKey = `users/${userId}/uploads/${randomUUID()}${ext}`;
         const { uploadUrl, storageUrl } = await storageAdapter.generatePresignedUrl(objectKey, file.mimetype);
-        return { uploadUrl, key: storageUrl, mimetype: file.mimetype };
+        const cloudflareUrl = await storageAdapter.generateDownloadUrl(objectKey, 604800);
+        return { uploadUrl, key: storageUrl, cloudflareUrl, mimetype: file.mimetype };
       })
     );
 
@@ -156,7 +159,8 @@ export default async function mediaRoutes(app: FastifyInstance) {
             (${assetId}, ${req.contentIdeaId}, ${req.id}, ${req.mediaType}, ${file.key}, ${env.STORAGE_PROVIDER}, ${file.mimetype},
              'generated', 'USER_UPLOADED', 'ACTIVE', ${userId})
         `;
-        uploadedAssets.push({ assetId, key: file.key });
+        const cloudflareUrl = await storageAdapter.generateDownloadUrl(file.key, 604800);
+        uploadedAssets.push({ assetId, key: file.key, cloudflareUrl });
       }
 
       await sql`
@@ -185,11 +189,43 @@ export default async function mediaRoutes(app: FastifyInstance) {
       `;
     });
 
+    // Auto-schedule post and notify user asynchronously
+    (async () => {
+      try {
+        const schedulingAgent = new SchedulingAgent();
+        const scheduler = new ContentScheduler();
+        const accountId = req.socialAccountId;
+        
+        // 1. Generate recommendation
+        const rec = await schedulingAgent.generateRecommendation(req.contentIdeaId, accountId);
+        
+        // 2. Schedule the post
+        await scheduler.schedulePost(req.contentIdeaId, accountId, rec.recommendedAt);
+        
+        // 3. Notify user
+        await sql`
+          INSERT INTO notifications (user_id, type, priority, title, message, action_url)
+          VALUES (
+            ${userId}, 
+            'POST_SCHEDULED', 
+            'normal', 
+            'Post Auto-Scheduled', 
+            'AI has automatically scheduled your manually uploaded post for ' || ${rec.recommendedAt.toLocaleString()} || ' based on engagement trends.', 
+            '/dashboard/calendar'
+          )
+        `;
+        console.log(`[MediaUpload] Successfully auto-scheduled post for idea ${req.contentIdeaId}`);
+      } catch (err) {
+        console.error('[MediaUpload] Failed to auto-schedule post after upload:', err);
+      }
+    })();
+
     return { 
       success: true, 
       data: {
         assetId: uploadedAssets[0].assetId,
         key: uploadedAssets[0].key,
+        cloudflareUrl: uploadedAssets[0].cloudflareUrl,
         assets: uploadedAssets 
       }
     };
@@ -215,7 +251,7 @@ export default async function mediaRoutes(app: FastifyInstance) {
     if (!objectKey) return reply.code(404).send({ error: 'Asset has no storage key' });
 
     const url = await storageAdapter.generateDownloadUrl(objectKey, 600);
-    return { success: true, url };
+    return { success: true, data: { url } };
   });
 
   app.delete('/media/:id', async (request, reply) => {

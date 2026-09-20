@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { apiClient } from '@/lib/api-client';
 import Link from 'next/link';
 import {
   useContentDetail,
@@ -28,38 +29,38 @@ import { toast } from '@/lib/hooks/use-toast';
 import { formatDistanceToNow, format } from 'date-fns';
 
 const STATUS_CONFIG: Record<string, { label: string; cls: string; dot: string }> = {
-  draft:            { label: 'Draft',            cls: 'bg-slate-100 text-slate-700 border-slate-200',      dot: 'bg-slate-400' },
-  waiting_approval: { label: 'Awaiting Review',  cls: 'bg-amber-50 text-amber-700 border-amber-200',      dot: 'bg-amber-400' },
-  ready:            { label: 'Ready to Publish', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200', dot: 'bg-emerald-400' },
-  blocked:          { label: 'Blocked',           cls: 'bg-red-50 text-red-700 border-red-200',            dot: 'bg-red-400' },
+  draft: { label: 'Draft', cls: 'bg-slate-100 text-slate-700 border-slate-200', dot: 'bg-slate-400' },
+  waiting_approval: { label: 'Awaiting Review', cls: 'bg-amber-50 text-amber-700 border-amber-200', dot: 'bg-amber-400' },
+  ready: { label: 'Ready to Publish', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200', dot: 'bg-emerald-400' },
+  blocked: { label: 'Blocked', cls: 'bg-red-50 text-red-700 border-red-200', dot: 'bg-red-400' },
 };
 
 const ASSET_STATUS_CONFIG: Record<string, { label: string; icon: any; cls: string; bg: string }> = {
-  completed:       { label: 'Assets Ready',    icon: CheckCircle2,  cls: 'text-emerald-600', bg: 'bg-emerald-50 border-emerald-200' },
-  needs_attention: { label: 'Needs Attention', icon: AlertTriangle, cls: 'text-orange-600',  bg: 'bg-orange-50 border-orange-200' },
-  pending:         { label: 'Generating...',   icon: Clock,         cls: 'text-amber-600',   bg: 'bg-amber-50 border-amber-200' },
-  generating:      { label: 'Generating...',   icon: Clock,         cls: 'text-amber-600',   bg: 'bg-amber-50 border-amber-200' },
-  none:            { label: 'No Assets Yet',   icon: ImagePlus,     cls: 'text-slate-500',   bg: 'bg-slate-50 border-slate-200' },
+  completed: { label: 'Assets Ready', icon: CheckCircle2, cls: 'text-emerald-600', bg: 'bg-emerald-50 border-emerald-200' },
+  needs_attention: { label: 'Needs Attention', icon: AlertTriangle, cls: 'text-orange-600', bg: 'bg-orange-50 border-orange-200' },
+  pending: { label: 'Generating...', icon: Clock, cls: 'text-amber-600', bg: 'bg-amber-50 border-amber-200' },
+  generating: { label: 'Generating...', icon: Clock, cls: 'text-amber-600', bg: 'bg-amber-50 border-amber-200' },
+  none: { label: 'No Assets Yet', icon: ImagePlus, cls: 'text-slate-500', bg: 'bg-slate-50 border-slate-200' },
 };
 
 const SOURCE_CONFIG: Record<string, { label: string; icon: any; cls: string }> = {
-  AI_GENERATED:   { label: 'AI Generated',  icon: Bot,    cls: 'bg-purple-50 text-purple-700 border-purple-200' },
+  AI_GENERATED: { label: 'AI Generated', icon: Bot, cls: 'bg-purple-50 text-purple-700 border-purple-200' },
   MANUALLY_ADDED: { label: 'Manual Upload', icon: Upload, cls: 'bg-blue-50 text-blue-700 border-blue-200' },
-  USER_UPLOADED:  { label: 'User Uploaded', icon: User,   cls: 'bg-sky-50 text-sky-700 border-sky-200' },
-  ai_generated:   { label: 'AI Generated',  icon: Bot,    cls: 'bg-purple-50 text-purple-700 border-purple-200' },
+  USER_UPLOADED: { label: 'User Uploaded', icon: User, cls: 'bg-sky-50 text-sky-700 border-sky-200' },
+  ai_generated: { label: 'AI Generated', icon: Bot, cls: 'bg-purple-50 text-purple-700 border-purple-200' },
   manually_added: { label: 'Manual Upload', icon: Upload, cls: 'bg-blue-50 text-blue-700 border-blue-200' },
-  user_uploaded:  { label: 'User Uploaded', icon: User,   cls: 'bg-sky-50 text-sky-700 border-sky-200' },
+  user_uploaded: { label: 'User Uploaded', icon: User, cls: 'bg-sky-50 text-sky-700 border-sky-200' },
 };
 
 const ERROR_LABELS: Record<string, string> = {
-  timeout:        'Request Timeout',
-  rate_limited:   'Rate Limited',
+  timeout: 'Request Timeout',
+  rate_limited: 'Rate Limited',
   provider_error: 'Provider Error',
   content_policy: 'Content Policy Violation',
   invalid_prompt: 'Invalid Prompt',
   quota_exceeded: 'Quota Exceeded',
-  permanent:      'Permanent Error',
-  transient:      'Transient Error',
+  permanent: 'Permanent Error',
+  transient: 'Transient Error',
 };
 
 function CopyButton({ text, label = 'Copy', size = 'sm' }: { text: string; label?: string; size?: 'sm' | 'xs' }) {
@@ -110,8 +111,8 @@ function PromptCard({
 
   const promptSourceColors = {
     ai_generated: 'bg-purple-50 text-purple-700 border-purple-200',
-    user_edited:  'bg-blue-50 text-blue-700 border-blue-200',
-    improved:     'bg-emerald-50 text-emerald-700 border-emerald-200',
+    user_edited: 'bg-blue-50 text-blue-700 border-blue-200',
+    improved: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   } as const;
   const promptSourceLabels = { ai_generated: 'AI Generated', user_edited: 'User Edited', improved: 'AI Improved' } as const;
   const srcColor = promptSourceColors[prompt.source as keyof typeof promptSourceColors] ?? promptSourceColors.ai_generated;
@@ -131,9 +132,9 @@ function PromptCard({
   return (
     <div className={cn(
       'rounded-xl border overflow-hidden transition-all duration-200',
-      isCurrent && hasFailed  ? 'border-orange-200 bg-gradient-to-b from-orange-50/60 to-amber-50/40' :
-      isCurrent && !hasFailed ? 'border-primary/25 bg-gradient-to-b from-primary/5 to-transparent' :
-      'border-border/60 bg-muted/20',
+      isCurrent && hasFailed ? 'border-orange-200 bg-gradient-to-b from-orange-50/60 to-amber-50/40' :
+        isCurrent && !hasFailed ? 'border-primary/25 bg-gradient-to-b from-primary/5 to-transparent' :
+          'border-border/60 bg-muted/20',
     )}>
       <button
         onClick={() => setExpanded(v => !v)}
@@ -217,6 +218,22 @@ function PromptCard({
 }
 
 function MediaPreviewCard({ asset, onReplace }: { asset: any; onReplace: () => void }) {
+  const [mediaUrl, setMediaUrl] = useState<string>('');
+
+  useEffect(() => {
+    if (!asset.storageurl) return;
+
+    if (asset.storageurl.startsWith('http://') || asset.storageurl.startsWith('https://')) {
+      setMediaUrl(asset.storageurl);
+    } else {
+      apiClient.get<{ url: string }>(`/api/media/${asset.id}/url`)
+        .then(res => {
+          if (res.url) setMediaUrl(res.url);
+        })
+        .catch(err => console.error('Failed to load media URL:', err));
+    }
+  }, [asset.id, asset.storageurl]);
+
   const srcKey = asset.source?.toUpperCase() ?? asset.source;
   const srcConf = SOURCE_CONFIG[srcKey] ?? SOURCE_CONFIG[asset.source] ?? { label: asset.source ?? 'Unknown', icon: Image, cls: 'bg-slate-50 text-slate-700 border-slate-200' };
   const SrcIcon = srcConf.icon;
@@ -226,11 +243,11 @@ function MediaPreviewCard({ asset, onReplace }: { asset: any; onReplace: () => v
     <div className="rounded-2xl border border-border/60 overflow-hidden bg-card shadow-sm">
       <div className="relative group bg-gradient-to-br from-slate-100 to-slate-200 aspect-[4/3] overflow-hidden">
         {isVideo
-          ? <video src={asset.storageUrl} controls className="w-full h-full object-contain" />
-          : <img src={asset.storageUrl} alt="Media asset" className="w-full h-full object-contain" />
+          ? <video src={mediaUrl || asset.storageurl} controls className="w-full h-full object-contain" />
+          : (mediaUrl ? <img src={mediaUrl} alt="Media asset" className="w-full h-full object-contain" /> : <div className="w-full h-full flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground/50" /></div>)
         }
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-end justify-between p-3">
-          <a href={asset.storageUrl} target="_blank" rel="noopener noreferrer"
+          <a href={mediaUrl || asset.storageurl} target="_blank" rel="noopener noreferrer"
             className="inline-flex items-center gap-1 text-[10px] font-semibold text-white bg-white/20 hover:bg-white/30 backdrop-blur-sm px-2 py-1 rounded-full border border-white/30 transition-colors">
             <ExternalLink className="h-3 w-3" /> View Full
           </a>
@@ -263,17 +280,17 @@ function GenerationHistorySection({ attempts }: { attempts: any[] }) {
       {attempts.map((a, i) => (
         <div key={a.id} className={cn(
           'rounded-2xl border overflow-hidden',
-          a.status === 'failed'    ? 'border-red-200 bg-red-50/30' :
-          a.status === 'generated' ? 'border-emerald-200 bg-emerald-50/20' :
-          'border-border/60 bg-muted/10',
+          a.status === 'failed' ? 'border-red-200 bg-red-50/30' :
+            a.status === 'generated' ? 'border-emerald-200 bg-emerald-50/20' :
+              'border-border/60 bg-muted/10',
         )}>
           <div className="flex items-center justify-between gap-3 px-4 py-3">
             <div className="flex items-center gap-2.5">
               <div className={cn('h-7 w-7 rounded-full flex items-center justify-center shrink-0',
                 a.status === 'failed' ? 'bg-red-100' : a.status === 'generated' ? 'bg-emerald-100' : 'bg-amber-100')}>
                 {a.status === 'failed' ? <XCircle className="h-4 w-4 text-red-500" /> :
-                 a.status === 'generated' ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> :
-                 <Clock className="h-4 w-4 text-amber-500" />}
+                  a.status === 'generated' ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> :
+                    <Clock className="h-4 w-4 text-amber-500" />}
               </div>
               <div>
                 <div className="flex items-center gap-2">
@@ -290,8 +307,8 @@ function GenerationHistorySection({ attempts }: { attempts: any[] }) {
             </div>
             <div className={cn('text-xs font-semibold px-2 py-0.5 rounded-full border',
               a.status === 'failed' ? 'bg-red-50 text-red-600 border-red-200' :
-              a.status === 'generated' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
-              'bg-amber-50 text-amber-600 border-amber-200')}>
+                a.status === 'generated' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
+                  'bg-amber-50 text-amber-600 border-amber-200')}>
               {a.status}
             </div>
           </div>
@@ -372,33 +389,33 @@ export default function ContentDetailPage({ params }: PageProps) {
     );
   }
 
-  const statusConf  = STATUS_CONFIG[content.status] ?? { label: content.status, cls: 'bg-slate-100 text-slate-700 border-slate-200', dot: 'bg-slate-400' };
-  const assetConf   = ASSET_STATUS_CONFIG[content.assetGenerationStatus] ?? ASSET_STATUS_CONFIG['none']!;
-  const AssetIcon   = assetConf.icon;
-  const hashtags    = Array.isArray(content.hashtags) ? content.hashtags : [];
-  const hasFailed   = content.assetGenerationStatus === 'needs_attention';
-  const hasPrompts  = (content.prompts?.length ?? 0) > 0;
-  const assets      = content.assets ?? [];
-  const prompts     = content.prompts ?? [];
-  const mediaReqs   = content.mediaRequirements ?? [];
+  const statusConf = STATUS_CONFIG[content.status] ?? { label: content.status, cls: 'bg-slate-100 text-slate-700 border-slate-200', dot: 'bg-slate-400' };
+  const assetConf = ASSET_STATUS_CONFIG[content.assetGenerationStatus] ?? ASSET_STATUS_CONFIG['none']!;
+  const AssetIcon = assetConf.icon;
+  const hashtags = Array.isArray(content.hashtags) ? content.hashtags : [];
+  const hasFailed = content.assetGenerationStatus === 'needs_attention';
+  const hasPrompts = (content.prompts?.length ?? 0) > 0;
+  const assets = content.assets ?? [];
+  const prompts = content.prompts ?? [];
+  const mediaReqs = content.mediaRequirements ?? [];
   const activeImages = assets.filter(a => ['image', 'IMAGE', 'carousel', 'CAROUSEL'].includes(a.assetType) && (a.assetStatus === 'ACTIVE' || (a as any).status === 'ACTIVE'));
   if (activeImages.length === 0) {
     const fallback = assets.find(a => ['image', 'IMAGE', 'carousel', 'CAROUSEL'].includes(a.assetType));
     if (fallback) activeImages.push(fallback);
   }
-  const imageReq    = mediaReqs.find(r => ['image', 'IMAGE', 'carousel', 'CAROUSEL'].includes(r.mediaType));
-  const videoReq    = mediaReqs.find(r => ['video', 'VIDEO', 'video_placeholder'].includes(r.mediaType));
+  const imageReq = mediaReqs.find(r => ['image', 'IMAGE', 'carousel', 'CAROUSEL'].includes(r.mediaType));
+  const videoReq = mediaReqs.find(r => ['video', 'VIDEO', 'video_placeholder'].includes(r.mediaType));
   const imagePrompts = prompts.filter(p => p.assetType.toLowerCase() === 'image' || p.assetType.toLowerCase() === 'carousel');
   const videoPrompts = prompts.filter(p => p.assetType.toLowerCase() === 'video_placeholder' || p.assetType.toLowerCase() === 'video');
   const latestAttempt = attempts[0];
   const hasError = latestAttempt?.status === 'failed';
 
   const tabs = [
-    { key: 'media'    as const, label: 'Media & Prompts', icon: Image,    alert: hasFailed, count: null },
-    { key: 'overview' as const, label: 'Content',         icon: FileText, alert: false,     count: null },
-    { key: 'schedule' as const, label: 'Schedule',        icon: Calendar, alert: false,     count: null },
-    { key: 'history'  as const, label: 'History',         icon: History,  alert: false,     count: attempts.length },
-    { key: 'versions' as const, label: 'Versions',        icon: Eye,      alert: false,     count: content.versions?.length },
+    { key: 'media' as const, label: 'Media & Prompts', icon: Image, alert: hasFailed, count: null },
+    { key: 'overview' as const, label: 'Content', icon: FileText, alert: false, count: null },
+    { key: 'schedule' as const, label: 'Schedule', icon: Calendar, alert: false, count: null },
+    { key: 'history' as const, label: 'History', icon: History, alert: false, count: attempts.length },
+    { key: 'versions' as const, label: 'Versions', icon: Eye, alert: false, count: content.versions?.length },
   ];
 
   const latestRec = recommendations?.[0] ?? null;
@@ -500,8 +517,8 @@ export default function ContentDetailPage({ params }: PageProps) {
                 {imageReq?.status && (
                   <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded-full border',
                     imageReq.status === 'READY' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                    imageReq.status === 'FAILED' ? 'bg-red-50 text-red-700 border-red-200' :
-                    'bg-amber-50 text-amber-700 border-amber-200')}>
+                      imageReq.status === 'FAILED' ? 'bg-red-50 text-red-700 border-red-200' :
+                        'bg-amber-50 text-amber-700 border-amber-200')}>
                     {imageReq.status}
                   </span>
                 )}
@@ -539,10 +556,10 @@ export default function ContentDetailPage({ params }: PageProps) {
 
             {uploading && (
               <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
-                <MediaUploader 
-                  contentIdeaId={id} 
-                  mediaRequirement={imageReq ?? { id: 'new', mediaType: 'IMAGE' } as any} 
-                  onUploadComplete={() => { setUploading(false); handleRefresh(); }} 
+                <MediaUploader
+                  contentIdeaId={id}
+                  mediaRequirement={imageReq ?? { id: 'new', mediaType: 'IMAGE' } as any}
+                  onUploadComplete={() => { setUploading(false); handleRefresh(); }}
                 />
                 <Button variant="ghost" size="sm" onClick={() => setUploading(false)} className="text-xs w-full">Cancel</Button>
               </div>
@@ -801,9 +818,9 @@ export default function ContentDetailPage({ params }: PageProps) {
           initialDate={schedule?.scheduledAt}
           initialTimezone={schedule?.scheduleTimezone}
           title={scheduleModalMode === 'edit' ? 'Edit Schedule' :
-                 scheduleModalMode === 'reschedule' ? 'Reschedule Post' : 'Choose Publishing Time'}
+            scheduleModalMode === 'reschedule' ? 'Reschedule Post' : 'Choose Publishing Time'}
           confirmLabel={scheduleModalMode === 'edit' ? 'Update Schedule' :
-                        scheduleModalMode === 'reschedule' ? 'Confirm Reschedule' : 'Confirm Schedule'}
+            scheduleModalMode === 'reschedule' ? 'Confirm Reschedule' : 'Confirm Schedule'}
           isLoading={schedLoading}
           onConfirm={async (params) => {
             if (scheduleModalMode === 'new') await acceptSchedule(params);

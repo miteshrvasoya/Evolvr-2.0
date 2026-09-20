@@ -63,9 +63,9 @@ export default async function contentRoutes(app: FastifyInstance) {
       WHERE ci.social_account_id = ${accountId}
         ${status ? sql`AND ci.status = ${status}` : sql``}
         ${assetStatus === 'failed' ? sql`AND ci.asset_generation_status = 'needs_attention'` :
-          assetStatus === 'pending' ? sql`AND ci.asset_generation_status IN ('pending', 'generating')` :
+        assetStatus === 'pending' ? sql`AND ci.asset_generation_status IN ('pending', 'generating')` :
           assetStatus === 'ok' ? sql`AND ci.asset_generation_status = 'completed'` :
-          sql``}
+            sql``}
         ${strategyVersionId ? sql`AND ci.strategy_version_id = ${strategyVersionId}` : sql``}
         ${search ? sql`AND (ci.hook ILIKE ${'%' + search + '%'} OR ci.caption ILIKE ${'%' + search + '%'} OR ci.concept ILIKE ${'%' + search + '%'})` : sql``}
       ORDER BY ci.created_at DESC
@@ -105,7 +105,7 @@ export default async function contentRoutes(app: FastifyInstance) {
     const idea = ideas[0];
 
     const assets = await sql`
-      SELECT ca.*, caga.attempt_number, caga.status AS attempt_status,
+      SELECT ca.*, CONCAT('https://pub-108c4ad3ad144a5abce192ab07cef226.r2.dev/', ca.object_key) AS storageurl, caga.attempt_number, caga.status AS attempt_status,
              caga.error_category, caga.error_message
       FROM content_assets ca
       LEFT JOIN content_asset_generation_attempts caga ON ca.generation_attempt_id = caga.id
@@ -553,7 +553,7 @@ Provide an improved prompt.`;
   app.get('/content/ungenerated-prompts', async (request: any, reply) => {
     const userId = request.user?.id;
     if (!userId) return reply.status(401).send({ error: 'Unauthorized', message: 'Missing user' });
-    
+
     const accountId = await getPrimaryAccount(userId);
     if (!accountId) return { success: true, data: [] };
 
@@ -680,11 +680,11 @@ Provide an improved prompt.`;
       totalIdeas: rawIdeas.length,
       totalPrompts
     };
-    
+
     console.log('[ungenerated-prompts] RETURNING:', { success: true, data: { totalIdeas: rawIdeas.length, groupsLength: result.length }, accountId });
 
-    return { 
-      success: true, 
+    return {
+      success: true,
       data: responseData
     };
   });
