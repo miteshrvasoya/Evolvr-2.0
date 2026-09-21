@@ -22,6 +22,11 @@ import { getInstagramAdapter } from '../modules/social/adapters/index.js';
 import { decryptToken } from '../modules/common/encryption.js';
 import { SchedulingService } from '../modules/scheduling/scheduling.service.js';
 import { env } from '../config/env.js';
+import { telegramService } from '../modules/notifications/telegram.service.js';
+import {
+  formatPublishSucceeded,
+  formatPublishFailedPermanent,
+} from '../modules/notifications/telegram.formatter.js';
 
 // ─── Error Classification ─────────────────────────────────────────────────────
 
@@ -314,8 +319,29 @@ export const createPublishingWorker = () => {
           if (retryable) {
             throw igErr; // BullMQ will retry
           } else {
-            // Non-retryable — don't throw, just return
+            // Non-retryable — notify and return without throwing
             if (tracker && stepId) await tracker.failStep(stepId, igErr.message, false);
+
+            // Telegram: permanent publish failure
+            try {
+              const userRows = await sql`SELECT sa.user_id FROM posts p JOIN social_accounts sa ON p.social_account_id = sa.id WHERE p.id = ${resolvedPostId} LIMIT 1`;
+              if (userRows.length > 0) {
+                await telegramService.send({
+                  eventType: 'PUBLISH_FAILED_PERMANENT',
+                  userId: userRows[0].userId as string,
+                  message: formatPublishFailedPermanent(
+                    (post.caption ?? '').slice(0, 60),
+                    errCode,
+                    env.EVOLVR_DASHBOARD_URL,
+                  ),
+                  idempotencyKey: `tg:PUBLISH_FAILED_PERMANENT:${resolvedPostId}`,
+                  actionUrl: `${env.EVOLVR_DASHBOARD_URL}/dashboard/content`,
+                });
+              }
+            } catch (tgErr) {
+              console.warn('[PublishingWorker] Telegram PUBLISH_FAILED_PERMANENT notification failed:', tgErr);
+            }
+
             return { status: 'failed', errorCode: errCode, message: igErr.message };
           }
         }
@@ -364,6 +390,26 @@ export const createPublishingWorker = () => {
 
         if (tracker && stepId) {
           await tracker.completeStep(stepId, { platformPostId });
+        }
+
+        // Telegram: successful publish
+        try {
+          const userRows = await sql`SELECT sa.user_id FROM posts p JOIN social_accounts sa ON p.social_account_id = sa.id WHERE p.id = ${resolvedPostId} LIMIT 1`;
+          if (userRows.length > 0) {
+            await telegramService.send({
+              eventType: 'PUBLISH_SUCCEEDED',
+              userId: userRows[0].userId as string,
+              message: formatPublishSucceeded(
+                (post.caption ?? '').slice(0, 60),
+                new Date(),
+                env.EVOLVR_DASHBOARD_URL,
+              ),
+              idempotencyKey: `tg:PUBLISH_SUCCEEDED:${resolvedPostId}`,
+              actionUrl: `${env.EVOLVR_DASHBOARD_URL}/dashboard/content`,
+            });
+          }
+        } catch (tgErr) {
+          console.warn('[PublishingWorker] Telegram PUBLISH_SUCCEEDED notification failed:', tgErr);
         }
 
         // ── 9. Queue analytics for published post ─────────────────────────────

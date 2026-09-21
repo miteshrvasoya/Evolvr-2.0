@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import { toast } from '@/lib/hooks/use-toast';
-import { MediaRequirement } from '@/lib/types/content';
+import { MediaRequirement } from '@/lib/hooks/use-content-detail';
 import { apiClient } from '@/lib/api-client';
 
 interface MediaUploaderProps {
@@ -25,7 +25,7 @@ export function MediaUploader({ contentIdeaId, mediaRequirement, onUploadComplet
   const isVideo = mediaRequirement.mediaType === 'VIDEO' || mediaRequirement.mediaType === 'video_placeholder';
   const isCarousel = mediaRequirement.mediaType === 'CAROUSEL';
   
-  const acceptedTypes = isVideo 
+  const acceptedTypes: Record<string, string[]> = isVideo 
     ? { 'video/mp4': ['.mp4'], 'video/quicktime': ['.mov'] }
     : { 'image/jpeg': ['.jpg', '.jpeg'], 'image/png': ['.png'], 'image/webp': ['.webp'] };
 
@@ -75,7 +75,7 @@ export function MediaUploader({ contentIdeaId, mediaRequirement, onUploadComplet
   const removeFile = (index: number) => {
     setFiles(prev => {
       const newFiles = [...prev];
-      URL.revokeObjectURL(newFiles[index].previewUrl);
+      if (newFiles[index]) URL.revokeObjectURL(newFiles[index]!.previewUrl);
       newFiles.splice(index, 1);
       return newFiles;
     });
@@ -108,7 +108,8 @@ export function MediaUploader({ contentIdeaId, mediaRequirement, onUploadComplet
       for (let i = 0; i < files.length; i++) {
         const fileObj = files[i];
         const urlObj = urls[i];
-        
+        if (!fileObj || !urlObj) continue;
+
         const uploadRes = await fetch(urlObj.uploadUrl, {
           method: 'PUT',
           headers: {

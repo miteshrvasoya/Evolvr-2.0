@@ -63,9 +63,9 @@ export function useContentLibrary(filters: ContentLibraryFilters = {}) {
   });
 
   return {
-    items: (data?.data ?? []) as ContentListItem[],
-    total: data?.total ?? 0,
-    page: data?.page ?? 1,
+    items: ((data as any)?.data ?? []) as ContentListItem[],
+    total: (data as any)?.total ?? 0,
+    page: (data as any)?.page ?? 1,
     error,
     isLoading,
     refresh: mutate,
@@ -80,8 +80,8 @@ export function useNeedsAttention() {
   );
 
   return {
-    items: (data?.data ?? []) as ContentListItem[],
-    count: data?.total ?? 0,
+    items: ((data as any)?.data ?? []) as ContentListItem[],
+    count: (data as any)?.total ?? 0,
     error,
     isLoading,
     refresh: mutate,

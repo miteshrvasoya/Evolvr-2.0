@@ -2,6 +2,12 @@ import { Worker, Job } from 'bullmq';
 import { redisConnection, queues } from '../queues/index.js';
 import { sql } from '../db/client.js';
 import { InstagramAdapter } from '../modules/social/adapters/instagram.adapter.js';
+import { telegramService } from '../modules/notifications/telegram.service.js';
+import {
+  formatInstagramSyncCompleted,
+  formatInstagramAuthFailure,
+} from '../modules/notifications/telegram.formatter.js';
+import { env } from '../config/env.js';
 
 export const createInstagramSyncWorker = () => {
   const adapter = new InstagramAdapter();
@@ -170,6 +176,22 @@ export const createInstagramSyncWorker = () => {
         });
       }
 
+      // Telegram: sync completed
+      try {
+        const userRows = await sql`SELECT user_id FROM social_accounts WHERE id = ${socialAccountId} LIMIT 1`;
+        if (userRows.length > 0) {
+          await telegramService.send({
+            eventType: 'INSTAGRAM_SYNC_COMPLETED',
+            userId: userRows[0].userId as string,
+            message: formatInstagramSyncCompleted(newPosts, insightsFetched, env.EVOLVR_DASHBOARD_URL),
+            idempotencyKey: `tg:INSTAGRAM_SYNC_COMPLETED:${syncRunId}`,
+            actionUrl: `${env.EVOLVR_DASHBOARD_URL}/dashboard/analytics`,
+          });
+        }
+      } catch (tgErr) {
+        console.warn('[InstagramSyncWorker] Telegram INSTAGRAM_SYNC_COMPLETED notification failed:', tgErr);
+      }
+
       return { status: 'completed', newPosts, updatedPosts, insightsFetched };
     } catch (err: any) {
       console.error(`[InstagramSyncWorker] Failed job ${job.id}`, err);
@@ -191,6 +213,22 @@ export const createInstagramSyncWorker = () => {
         await sql`
           UPDATE social_accounts SET connection_status = 'expired' WHERE id = ${socialAccountId}
         `;
+
+        // Telegram: auth failure — critical, notify immediately
+        try {
+          const userRows = await sql`SELECT user_id FROM social_accounts WHERE id = ${socialAccountId} LIMIT 1`;
+          if (userRows.length > 0) {
+            await telegramService.send({
+              eventType: 'INSTAGRAM_AUTH_FAILURE',
+              userId: userRows[0].userId as string,
+              message: formatInstagramAuthFailure(env.EVOLVR_DASHBOARD_URL),
+              idempotencyKey: `tg:INSTAGRAM_AUTH_FAILURE:${socialAccountId}`,
+              actionUrl: `${env.EVOLVR_DASHBOARD_URL}/dashboard/settings`,
+            });
+          }
+        } catch (tgErr) {
+          console.warn('[InstagramSyncWorker] Telegram INSTAGRAM_AUTH_FAILURE notification failed:', tgErr);
+        }
       }
 
       const isRetryable = !isAuthError;

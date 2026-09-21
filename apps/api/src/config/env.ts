@@ -77,6 +77,20 @@ const envSchema = z.object({
   // Observability
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   LOG_FORMAT: z.enum(['pretty', 'json']).default('pretty'),
+
+  // Telegram Notifications
+  // Set TELEGRAM_NOTIFICATIONS=true to enable Telegram delivery.
+  // Get TELEGRAM_BOT_TOKEN from @BotFather and TELEGRAM_CHAT_ID from the target chat.
+  TELEGRAM_NOTIFICATIONS: z.preprocess((val: unknown) => {
+    if (typeof val === 'string') return val === 'true' || val === '1';
+    if (typeof val === 'boolean') return val;
+    return false;
+  }, z.boolean().default(false)),
+  TELEGRAM_BOT_TOKEN: z.string().default(''),
+  TELEGRAM_CHAT_ID: z.string().default(''),
+
+  // Base URL for dashboard deep-links in notifications (e.g. https://app.evolvr.io)
+  EVOLVR_DASHBOARD_URL: z.string().default('http://localhost:3000'),
 });
 
 export type Env = z.infer<typeof envSchema>;

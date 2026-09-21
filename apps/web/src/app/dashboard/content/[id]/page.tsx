@@ -570,7 +570,9 @@ export default function ContentDetailPage({ params }: PageProps) {
                 <div className="flex items-center gap-2">
                   <XCircle className="h-4 w-4 text-red-500 shrink-0" />
                   <p className="text-sm font-semibold text-red-700">
-                    {ERROR_LABELS[latestAttempt?.errorCategory] ?? latestAttempt?.errorCategory ?? 'Generation Failed'}
+                    {latestAttempt?.errorCategory 
+                      ? ERROR_LABELS[latestAttempt.errorCategory] ?? latestAttempt.errorCategory 
+                      : 'Generation Failed'}
                   </p>
                 </div>
                 {latestAttempt?.errorMessage && (
@@ -680,7 +682,7 @@ export default function ContentDetailPage({ params }: PageProps) {
           {content.altText && (
             <div className="rounded-2xl border border-border/60 bg-card p-5 space-y-2">
               <SectionLabel>Alt Text</SectionLabel>
-              <p className="text-xs text-muted-foreground leading-relaxed italic">"{content.altText}"</p>
+              <p className="text-xs text-muted-foreground leading-relaxed italic">&quot;{content.altText}&quot;</p>
             </div>
           )}
         </div>

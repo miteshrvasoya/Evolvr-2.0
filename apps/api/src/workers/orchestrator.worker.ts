@@ -4,6 +4,13 @@ import { sql } from '../db/client.js';
 import { AgentRunTracker } from '../modules/agent/agent-tracker.js';
 import { SchedulingService } from '../modules/scheduling/scheduling.service.js';
 import { SchedulingAgent } from '../modules/scheduling/scheduling.agent.js';
+import { telegramService } from '../modules/notifications/telegram.service.js';
+import {
+  formatAgentStarted,
+  formatAgentCompleted,
+  formatContentScheduled,
+} from '../modules/notifications/telegram.formatter.js';
+import { env } from '../config/env.js';
 
 const schedulingService = new SchedulingService();
 const schedulingAgent   = new SchedulingAgent();
@@ -15,6 +22,25 @@ export const createOrchestratorWorker = () => {
 
     // Mark the agent run as running if it was queued
     await sql`UPDATE agent_runs SET status = 'running' WHERE id = ${agentRunId} AND status = 'queued'`;
+
+    // Notify: agent started (only when transitioning from queued → running)
+    try {
+      const goalRows = await sql`SELECT goal_type, social_account_id FROM admin_goals WHERE id = ${goalId} LIMIT 1`;
+      const userRows = await sql`SELECT user_id FROM social_accounts WHERE id = ${socialAccountId} LIMIT 1`;
+      if (goalRows.length > 0 && userRows.length > 0) {
+        const goal = goalRows[0];
+        const userId = userRows[0].userId as string;
+        await telegramService.send({
+          eventType: 'AGENT_STARTED',
+          userId,
+          message: formatAgentStarted(goal.goalType as string, env.EVOLVR_DASHBOARD_URL),
+          idempotencyKey: `tg:AGENT_STARTED:${agentRunId}`,
+          actionUrl: `${env.EVOLVR_DASHBOARD_URL}/dashboard`,
+        });
+      }
+    } catch (tgErr) {
+      console.warn('[OrchestratorWorker] Telegram AGENT_STARTED notification failed:', tgErr);
+    }
 
     const stepId = await tracker.startStep('evaluate_next_action', job.attemptsMade, job.opts.attempts || 5);
 
@@ -189,6 +215,23 @@ export const createOrchestratorWorker = () => {
             }
           }
 
+          // Notify: content scheduled
+          try {
+            const userRows = await sql`SELECT user_id FROM social_accounts WHERE id = ${socialAccountId} LIMIT 1`;
+            if (userRows.length > 0 && ideaIds.length > 0) {
+              const userId = userRows[0].userId as string;
+              await telegramService.send({
+                eventType: 'CONTENT_SCHEDULED',
+                userId,
+                message: formatContentScheduled(ideaIds.length, env.EVOLVR_DASHBOARD_URL),
+                idempotencyKey: `tg:CONTENT_SCHEDULED:${agentRunId}:${ideaIds.length}`,
+                actionUrl: `${env.EVOLVR_DASHBOARD_URL}/dashboard/schedule`,
+              });
+            }
+          } catch (tgErr) {
+            console.warn('[OrchestratorWorker] Telegram CONTENT_SCHEDULED notification failed:', tgErr);
+          }
+
           await tracker.completeStep(stepId, { action: 'autonomous_scheduling', scheduled: ideaIds.length });
           return { action: 'autonomous_scheduling' };
         }
@@ -216,6 +259,23 @@ export const createOrchestratorWorker = () => {
 
       // Update run to completed if no actions were taken.
       await sql`UPDATE agent_runs SET status = 'completed', completed_at = NOW() WHERE id = ${agentRunId}`;
+
+      // Notify: agent cycle complete
+      try {
+        const userRows = await sql`SELECT user_id FROM social_accounts WHERE id = ${socialAccountId} LIMIT 1`;
+        if (userRows.length > 0) {
+          const userId = userRows[0].userId as string;
+          await telegramService.send({
+            eventType: 'AGENT_COMPLETED',
+            userId,
+            message: formatAgentCompleted(env.EVOLVR_DASHBOARD_URL),
+            idempotencyKey: `tg:AGENT_COMPLETED:${agentRunId}`,
+            actionUrl: `${env.EVOLVR_DASHBOARD_URL}/dashboard/activity`,
+          });
+        }
+      } catch (tgErr) {
+        console.warn('[OrchestratorWorker] Telegram AGENT_COMPLETED notification failed:', tgErr);
+      }
 
       return { action: 'none' };
 

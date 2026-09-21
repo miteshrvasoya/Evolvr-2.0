@@ -94,4 +94,56 @@ export default async function settingsRoutes(app: FastifyInstance) {
   app.patch('/settings/profile', async (request, reply) => {
     return { success: true, data: { status: 'ok' } };
   });
+
+  // ── Notification Preferences ──────────────────────────────────────────────
+
+  app.get('/settings/notifications', async (request: any, reply) => {
+    const { id: userId } = request.user;
+
+    const rows = await sql`
+      SELECT telegram_enabled, telegram_event_overrides, updated_at
+      FROM notification_preferences
+      WHERE user_id = ${userId}
+      LIMIT 1
+    `;
+
+    // Return defaults if no row exists yet
+    const prefs = rows[0] ?? { telegramEnabled: true, telegramEventOverrides: {}, updatedAt: null };
+    return { success: true, data: prefs };
+  });
+
+  app.patch('/settings/notifications', async (request: any, reply) => {
+    const { id: userId } = request.user;
+
+    const notifSchema = z.object({
+      telegramEnabled: z.boolean().optional(),
+      telegramEventOverrides: z.record(z.string(), z.boolean()).optional(),
+    });
+
+    const parseResult = notifSchema.safeParse(request.body);
+    if (!parseResult.success) {
+      return reply.status(400).send({ success: false, error: { code: 'BAD_REQUEST', message: 'Invalid data' } });
+    }
+
+    const { telegramEnabled, telegramEventOverrides } = parseResult.data;
+
+    const result = await sql`
+      INSERT INTO notification_preferences (user_id, telegram_enabled, telegram_event_overrides)
+      VALUES (
+        ${userId},
+        ${telegramEnabled ?? true},
+        ${sql.json(telegramEventOverrides ?? {})}
+      )
+      ON CONFLICT (user_id) DO UPDATE SET
+        telegram_enabled         = COALESCE(${telegramEnabled ?? null}, notification_preferences.telegram_enabled),
+        telegram_event_overrides = COALESCE(
+          ${telegramEventOverrides ? sql.json(telegramEventOverrides) : null},
+          notification_preferences.telegram_event_overrides
+        ),
+        updated_at = NOW()
+      RETURNING telegram_enabled, telegram_event_overrides, updated_at
+    `;
+
+    return { success: true, data: result[0] };
+  });
 }

@@ -11,7 +11,7 @@ export function useNeedsAttentionCount() {
     revalidateOnFocus: true,
   });
 
-  const count = data?.total ?? 0;
+  const count = (data as any)?.total ?? 0;
 
   return { count };
 }

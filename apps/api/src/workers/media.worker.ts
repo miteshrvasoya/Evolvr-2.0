@@ -3,6 +3,9 @@ import { redisConnection, queues } from '../queues/index.js';
 import { sql } from '../db/client.js';
 import { AssetGenerationService, shouldRetryError, classifyError } from '../modules/media/asset-generation.service.js';
 import { AssetErrorCategory } from '../modules/media/media.interface.js';
+import { telegramService } from '../modules/notifications/telegram.service.js';
+import { formatMediaGenerationFailed } from '../modules/notifications/telegram.formatter.js';
+import { env } from '../config/env.js';
 
 const MAX_ASSET_RETRIES = 3;
 
@@ -152,7 +155,7 @@ async function sendNeedsAttentionNotification(
   try {
     // Find user from content idea → social account → user
     const rows = await sql`
-      SELECT sa.user_id FROM content_ideas ci
+      SELECT sa.user_id, ci.caption FROM content_ideas ci
       JOIN social_accounts sa ON ci.social_account_id = sa.id
       WHERE ci.id = ${contentIdeaId}
       LIMIT 1
@@ -160,6 +163,9 @@ async function sendNeedsAttentionNotification(
     if (!rows.length) return;
 
     const userId = rows[0]!.userId;
+    const caption = (rows[0]!.caption ?? '') as string;
+
+    // In-app notification (existing behaviour preserved)
     await sql`
       INSERT INTO notifications (user_id, type, priority, title, message, action_url, metadata)
       VALUES (
@@ -172,6 +178,20 @@ async function sendNeedsAttentionNotification(
         ${sql.json({ contentIdeaId, assetType, errorCategory })}
       )
     `;
+
+    // Telegram notification
+    await telegramService.send({
+      eventType: 'MEDIA_GENERATION_FAILED',
+      userId,
+      message: formatMediaGenerationFailed(
+        caption,
+        contentIdeaId,
+        assetType,
+        env.EVOLVR_DASHBOARD_URL,
+      ),
+      idempotencyKey: `tg:MEDIA_GENERATION_FAILED:${contentIdeaId}:${assetType}`,
+      actionUrl: `${env.EVOLVR_DASHBOARD_URL}/dashboard/content/${contentIdeaId}`,
+    });
   } catch (e) {
     console.error('[MediaWorker] Failed to send notification:', e);
   }

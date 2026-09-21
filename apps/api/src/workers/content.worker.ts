@@ -2,6 +2,10 @@ import { Worker, Job } from 'bullmq';
 import { redisConnection, queues } from '../queues/index.js';
 import { ContentAgent } from '../modules/agent/content.agent.js';
 import { AgentRunTracker } from '../modules/agent/agent-tracker.js';
+import { sql } from '../db/client.js';
+import { telegramService } from '../modules/notifications/telegram.service.js';
+import { formatContentBatchGenerated } from '../modules/notifications/telegram.formatter.js';
+import { env } from '../config/env.js';
 
 export const createContentWorker = () => {
   const contentAgent = new ContentAgent();
@@ -14,7 +18,23 @@ export const createContentWorker = () => {
     try {
       console.log(`[ContentWorker] Processing job ${job.id} for account ${socialAccountId}`);
 
-      await contentAgent.generateContentPlan(socialAccountId, strategyVersionId, agentRunId, attemptNumber, maxAttempts);
+      const result = await contentAgent.generateContentPlan(socialAccountId, strategyVersionId, agentRunId, attemptNumber, maxAttempts);
+
+      // Telegram: content batch generated
+      try {
+        const userRows = await sql`SELECT user_id FROM social_accounts WHERE id = ${socialAccountId} LIMIT 1`;
+        if (userRows.length > 0 && result?.generatedIdeas?.length > 0) {
+          await telegramService.send({
+            eventType: 'CONTENT_BATCH_GENERATED',
+            userId: userRows[0].userId as string,
+            message: formatContentBatchGenerated(result.generatedIdeas.length, env.EVOLVR_DASHBOARD_URL),
+            idempotencyKey: `tg:CONTENT_BATCH_GENERATED:${agentRunId}`,
+            actionUrl: `${env.EVOLVR_DASHBOARD_URL}/dashboard/content`,
+          });
+        }
+      } catch (tgErr) {
+        console.warn('[ContentWorker] Telegram CONTENT_BATCH_GENERATED notification failed:', tgErr);
+      }
 
       // Once content is generated, drop back into orchestrator
       await queues.orchestrator.add('evaluate-next-action', {

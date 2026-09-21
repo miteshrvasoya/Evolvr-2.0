@@ -9,6 +9,10 @@ import { createAnalyticsWorker } from './analytics.worker.js';
 import { createLearningWorker } from './learning.worker.js';
 import { createMediaWorker } from './media.worker.js';
 import { createInstagramSyncWorker } from './instagram-sync.worker.js';
+import { telegramService } from '../modules/notifications/telegram.service.js';
+import { formatAgentPermanentlyFailed } from '../modules/notifications/telegram.formatter.js';
+import { env } from '../config/env.js';
+import { sql } from '../db/client.js';
 
 const workers: Worker[] = [];
 
@@ -35,17 +39,36 @@ export function startWorkers() {
       
       if (job && job.data && job.data.agentRunId) {
         // If this is the final attempt
-        if (!job.opts.attempts || job.attemptsMade >= job.opts.attempts) {
+        const isFinalAttempt = !job.opts.attempts || job.attemptsMade >= job.opts.attempts;
+        if (isFinalAttempt) {
           try {
-            const { sql } = await import('../db/client.js');
             const errorMsg = err?.message || String(err) || 'Unknown error';
             await sql`
               UPDATE agent_runs 
               SET status = 'failed', error_message = ${errorMsg}, completed_at = NOW() 
               WHERE id = ${job.data.agentRunId}
             `;
+
+            // Telegram: agent permanently failed
+            const socialAccountId = job.data.socialAccountId ?? job.data.accountId;
+            if (socialAccountId) {
+              const userRows = await sql`SELECT user_id FROM social_accounts WHERE id = ${socialAccountId} LIMIT 1`;
+              if (userRows.length > 0) {
+                await telegramService.send({
+                  eventType: 'AGENT_PERMANENTLY_FAILED',
+                  userId: userRows[0].userId as string,
+                  message: formatAgentPermanentlyFailed(
+                    worker.name,
+                    errorMsg,
+                    env.EVOLVR_DASHBOARD_URL,
+                  ),
+                  idempotencyKey: `tg:AGENT_PERMANENTLY_FAILED:${job.data.agentRunId}:${worker.name}`,
+                  actionUrl: `${env.EVOLVR_DASHBOARD_URL}/dashboard/activity`,
+                });
+              }
+            }
           } catch (dbErr) {
-            console.error('[Worker Failed Handler] DB Update Error:', dbErr);
+            console.error('[Worker Failed Handler] Error:', dbErr);
           }
         }
       }

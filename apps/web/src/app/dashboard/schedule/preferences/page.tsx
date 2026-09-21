@@ -250,7 +250,7 @@ export default function SchedulingPreferencesPage() {
           <div className="flex items-start gap-2 rounded-lg bg-muted/50 p-3 mt-2">
             <Info className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
             <p className="text-xs text-muted-foreground">
-              The AI uses your account's historical engagement patterns alongside these preferences.
+              The AI uses your account&apos;s historical engagement patterns alongside these preferences.
               If you have limited data, preferences are weighted more heavily.
             </p>
           </div>

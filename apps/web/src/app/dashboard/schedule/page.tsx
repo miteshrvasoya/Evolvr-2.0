@@ -184,7 +184,7 @@ function ListView() {
                 </p>
                 <ScheduleStatusBadge
                   status={post.scheduleStatus}
-                  publishStatus={post.publishJobStatus}
+                  publishStatus={post.publishJob?.status}
                 />
               </div>
             </div>
@@ -222,7 +222,7 @@ function StatsRow() {
 export default function SchedulePage() {
   const now  = DateTime.now();
   const [viewYear,  setViewYear]  = useState(now.year);
-  const [viewMonth, setViewMonth] = useState(now.month);
+  const [viewMonth, setViewMonth] = useState<number>(now.month);
   const [view, setView] = useState<'calendar' | 'list'>('calendar');
 
   const viewDt = DateTime.fromObject({ year: viewYear, month: viewMonth, day: 1 });

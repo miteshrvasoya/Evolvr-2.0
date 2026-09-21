@@ -2,6 +2,10 @@ import { Worker, Job } from 'bullmq';
 import { redisConnection, queues } from '../queues/index.js';
 import { LearningAgent } from '../modules/agent/learning.agent.js';
 import { AgentRunTracker } from '../modules/agent/agent-tracker.js';
+import { sql } from '../db/client.js';
+import { telegramService } from '../modules/notifications/telegram.service.js';
+import { formatPerformanceInsight } from '../modules/notifications/telegram.formatter.js';
+import { env } from '../config/env.js';
 
 export const createLearningWorker = () => {
   const learningAgent = new LearningAgent();
@@ -14,7 +18,25 @@ export const createLearningWorker = () => {
     try {
       console.log(`[LearningWorker] Processing job ${job.id} for account ${socialAccountId}`);
 
-      await learningAgent.runLearning(socialAccountId, agentRunId, attemptNumber, maxAttempts);
+      const result = await learningAgent.runLearning(socialAccountId, agentRunId, attemptNumber, maxAttempts);
+
+      // Telegram: performance insight (only when new observations were generated)
+      if ((result?.observationsGenerated ?? 0) > 0) {
+        try {
+          const userRows = await sql`SELECT user_id FROM social_accounts WHERE id = ${socialAccountId} LIMIT 1`;
+          if (userRows.length > 0) {
+            await telegramService.send({
+              eventType: 'PERFORMANCE_INSIGHT',
+              userId: userRows[0].userId as string,
+              message: formatPerformanceInsight(result.observationsGenerated, env.EVOLVR_DASHBOARD_URL),
+              idempotencyKey: `tg:PERFORMANCE_INSIGHT:${agentRunId}`,
+              actionUrl: `${env.EVOLVR_DASHBOARD_URL}/dashboard/analytics`,
+            });
+          }
+        } catch (tgErr) {
+          console.warn('[LearningWorker] Telegram PERFORMANCE_INSIGHT notification failed:', tgErr);
+        }
+      }
 
       // Once learning analysis is done, drop back into orchestrator
       await queues.orchestrator.add('evaluate-next-action', {

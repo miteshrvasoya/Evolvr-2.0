@@ -31,7 +31,10 @@ async function request<T>(
   serverToken?: string,
 ): Promise<T> {
   const json = await requestRaw<T>(method, path, body, serverToken);
-  return json.data;
+  if (json.success) {
+    return json.data;
+  }
+  throw new Error('Unreachable: requestRaw throws on failure');
 }
 
 async function requestRaw<T>(

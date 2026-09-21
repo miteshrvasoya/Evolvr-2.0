@@ -2,6 +2,10 @@ import { Worker, Job } from 'bullmq';
 import { redisConnection, queues } from '../queues/index.js';
 import { StrategyAgent } from '../modules/agent/strategy.agent.js';
 import { AgentRunTracker } from '../modules/agent/agent-tracker.js';
+import { sql } from '../db/client.js';
+import { telegramService } from '../modules/notifications/telegram.service.js';
+import { formatStrategyGenerated } from '../modules/notifications/telegram.formatter.js';
+import { env } from '../config/env.js';
 
 export const createStrategyWorker = () => {
   const strategyAgent = new StrategyAgent();
@@ -14,7 +18,31 @@ export const createStrategyWorker = () => {
     try {
       console.log(`[StrategyWorker] Processing job ${job.id} for account ${socialAccountId}`);
 
-      await strategyAgent.runStrategyRevision(socialAccountId, goalId, agentRunId, attemptNumber, maxAttempts);
+      const result = await strategyAgent.runStrategyRevision(socialAccountId, goalId, agentRunId, attemptNumber, maxAttempts);
+
+      // Telegram: strategy generated
+      try {
+        const userRows = await sql`SELECT user_id FROM social_accounts WHERE id = ${socialAccountId} LIMIT 1`;
+        const goalRows = await sql`SELECT goal_type FROM admin_goals WHERE id = ${goalId} LIMIT 1`;
+        if (userRows.length > 0 && goalRows.length > 0) {
+          // Fetch the new version number from the result
+          const versionRows = await sql`SELECT version_number FROM strategy_versions WHERE id = ${result?.strategyId} LIMIT 1`;
+          const versionNumber = versionRows[0]?.versionNumber ?? 1;
+          await telegramService.send({
+            eventType: 'STRATEGY_GENERATED',
+            userId: userRows[0].userId as string,
+            message: formatStrategyGenerated(
+              versionNumber,
+              goalRows[0].goalType as string,
+              env.EVOLVR_DASHBOARD_URL,
+            ),
+            idempotencyKey: `tg:STRATEGY_GENERATED:${agentRunId}`,
+            actionUrl: `${env.EVOLVR_DASHBOARD_URL}/dashboard/strategy`,
+          });
+        }
+      } catch (tgErr) {
+        console.warn('[StrategyWorker] Telegram STRATEGY_GENERATED notification failed:', tgErr);
+      }
 
       // Once strategy is revised, we drop back into the orchestrator to decide the next step
       await queues.orchestrator.add('evaluate-next-action', {

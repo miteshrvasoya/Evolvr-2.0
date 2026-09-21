@@ -628,7 +628,7 @@ function ProfileTab() {
     <Card>
       <CardHeader>
         <CardTitle>Account Profile (Business Context)</CardTitle>
-        <CardDescription>Configure your brand's core identity so the agent understands what to post</CardDescription>
+        <CardDescription>Configure your brand&apos;s core identity so the agent understands what to post</CardDescription>
       </CardHeader>
       <CardContent>
         {loading ? (
