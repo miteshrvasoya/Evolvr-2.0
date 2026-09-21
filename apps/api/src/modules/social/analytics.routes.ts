@@ -24,7 +24,7 @@ export default async function analyticsRoutes(app: FastifyInstance) {
       return reply.status(404).send({ error: 'Account not found' });
     }
     
-    const account = accounts[0];
+    const account = accounts[0]!;
     const accessToken = decryptToken(account.accessTokenEncrypted);
 
     try {

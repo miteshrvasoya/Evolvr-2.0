@@ -26,7 +26,7 @@ export const createContentWorker = () => {
         if (userRows.length > 0 && result?.generatedIdeas?.length > 0) {
           await telegramService.send({
             eventType: 'CONTENT_BATCH_GENERATED',
-            userId: userRows[0].userId as string,
+            userId: userRows[0]!.userId as string,
             message: formatContentBatchGenerated(result.generatedIdeas.length, env.EVOLVR_DASHBOARD_URL),
             idempotencyKey: `tg:CONTENT_BATCH_GENERATED:${agentRunId}`,
             actionUrl: `${env.EVOLVR_DASHBOARD_URL}/dashboard/content`,

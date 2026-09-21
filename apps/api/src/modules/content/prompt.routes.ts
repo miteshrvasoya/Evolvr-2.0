@@ -63,7 +63,7 @@ export default async function promptRoutes(app: FastifyInstance) {
     `;
 
     if (!prompts.length) return reply.code(404).send({ error: 'Not found' });
-    const prompt = prompts[0];
+    const prompt = prompts[0]!;
 
     // Auth check
     const accountId = await getPrimaryAccount(userId);

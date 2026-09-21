@@ -28,8 +28,8 @@ export const createOrchestratorWorker = () => {
       const goalRows = await sql`SELECT goal_type, social_account_id FROM admin_goals WHERE id = ${goalId} LIMIT 1`;
       const userRows = await sql`SELECT user_id FROM social_accounts WHERE id = ${socialAccountId} LIMIT 1`;
       if (goalRows.length > 0 && userRows.length > 0) {
-        const goal = goalRows[0];
-        const userId = userRows[0].userId as string;
+        const goal = goalRows[0]!;
+        const userId = userRows[0]!.userId as string;
         await telegramService.send({
           eventType: 'AGENT_STARTED',
           userId,
@@ -52,13 +52,13 @@ export const createOrchestratorWorker = () => {
         SELECT status, autonomy_level FROM admin_goals 
         WHERE id = ${goalId} AND social_account_id = ${socialAccountId}
       `;
-      if (goals.length === 0 || goals[0].status !== 'ACTIVE') {
+      if (goals.length === 0 || goals[0]!.status !== 'ACTIVE') {
         await tracker.addLog(`Goal is not ACTIVE. Current status: ${goals[0]?.status}. Stopping orchestrator.`);
         await tracker.completeStep(stepId, { action: 'none' });
         await sql`UPDATE agent_runs SET status = 'completed', completed_at = NOW() WHERE id = ${agentRunId}`;
         return { action: 'none' };
       }
-      const autonomyLevel = goals[0].autonomy_level;
+      const autonomyLevel = goals[0]!.autonomy_level;
 
       // ── Phase 1: SYNC ─────────────────────────────────────────────────────
       // Has Instagram been synced recently? (e.g. in the last 12 hours)
@@ -195,7 +195,7 @@ export const createOrchestratorWorker = () => {
                 ORDER BY created_at DESC LIMIT 1
               `;
               if (recs.length > 0) {
-                const rec = recs[0];
+                const rec = recs[0]!;
                 await schedulingService.createSchedule({
                   contentIdeaId: ideaId,
                   accountId: socialAccountId,
@@ -219,7 +219,7 @@ export const createOrchestratorWorker = () => {
           try {
             const userRows = await sql`SELECT user_id FROM social_accounts WHERE id = ${socialAccountId} LIMIT 1`;
             if (userRows.length > 0 && ideaIds.length > 0) {
-              const userId = userRows[0].userId as string;
+              const userId = userRows[0]!.userId as string;
               await telegramService.send({
                 eventType: 'CONTENT_SCHEDULED',
                 userId,
@@ -264,7 +264,7 @@ export const createOrchestratorWorker = () => {
       try {
         const userRows = await sql`SELECT user_id FROM social_accounts WHERE id = ${socialAccountId} LIMIT 1`;
         if (userRows.length > 0) {
-          const userId = userRows[0].userId as string;
+          const userId = userRows[0]!.userId as string;
           await telegramService.send({
             eventType: 'AGENT_COMPLETED',
             userId,

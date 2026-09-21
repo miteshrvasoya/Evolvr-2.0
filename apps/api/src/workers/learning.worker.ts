@@ -27,7 +27,7 @@ export const createLearningWorker = () => {
           if (userRows.length > 0) {
             await telegramService.send({
               eventType: 'PERFORMANCE_INSIGHT',
-              userId: userRows[0].userId as string,
+              userId: userRows[0]!.userId as string,
               message: formatPerformanceInsight(result.observationsGenerated, env.EVOLVR_DASHBOARD_URL),
               idempotencyKey: `tg:PERFORMANCE_INSIGHT:${agentRunId}`,
               actionUrl: `${env.EVOLVR_DASHBOARD_URL}/dashboard/analytics`,

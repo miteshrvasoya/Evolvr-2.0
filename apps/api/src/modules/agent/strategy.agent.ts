@@ -74,7 +74,7 @@ export class StrategyAgent {
       await tracker.logEvent(stepId, 'SAVING_STRATEGY', 'info', `Saving new strategy version to database...`);
       
       const existingVersions = await sql`SELECT COUNT(*) as count FROM strategy_versions WHERE social_account_id = ${socialAccountId}`;
-      const nextVersion = Number(existingVersions[0].count) + 1;
+      const nextVersion = Number(existingVersions[0]!.count) + 1;
 
       // Deactivate old strategies
       await sql`UPDATE strategy_versions SET status = 'superseded' WHERE social_account_id = ${socialAccountId}`;

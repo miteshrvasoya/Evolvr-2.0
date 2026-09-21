@@ -23,7 +23,7 @@ export class SimulatedInstagramAdapter {
     };
   }
 
-  async publishPost(accessToken: string, platformAccountId: string, mediaUrl: string, caption: string) {
+  async publishPost(accessToken: string, platformAccountId: string, mediaUrls: string[], caption: string, mediaType: string = 'image') {
     // Simulate API latency
     await new Promise(resolve => setTimeout(resolve, 1500));
     

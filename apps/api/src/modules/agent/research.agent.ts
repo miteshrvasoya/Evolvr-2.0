@@ -52,7 +52,7 @@ export class ResearchAgent {
         
         if (!searchRes.ok) throw new Error(`Tavily API error: ${searchRes.statusText}`);
         
-        const searchData = await searchRes.json();
+        const searchData = await searchRes.json() as any;
         sources = (searchData.results || []).map((r: any) => ({
           title: r.title,
           snippet: r.content,
@@ -78,7 +78,7 @@ export class ResearchAgent {
           throw new Error(`Serper API error: ${searchRes.status} - ${errText}`);
         }
 
-        const searchData = await searchRes.json();
+        const searchData = await searchRes.json() as any;
         
         if (!searchData.organic) {
           await tracker.addLog(`Serper API returned unexpected format: ${JSON.stringify(searchData)}`);
@@ -128,9 +128,9 @@ export class ResearchAgent {
         ) RETURNING id
       `;
 
-      await tracker.completeStep(stepId, { researchRunId: researchRun[0].id, synthesis });
+      await tracker.completeStep(stepId, { researchRunId: researchRun[0]!.id, synthesis });
 
-      return { success: true, researchRunId: researchRun[0].id, synthesis };
+      return { success: true, researchRunId: researchRun[0]!.id, synthesis };
 
     } catch (error: any) {
       await tracker.failStep(stepId, error.message, true, new Date(Date.now() + 5000));

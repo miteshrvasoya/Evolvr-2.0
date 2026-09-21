@@ -56,7 +56,7 @@ export function startWorkers() {
               if (userRows.length > 0) {
                 await telegramService.send({
                   eventType: 'AGENT_PERMANENTLY_FAILED',
-                  userId: userRows[0].userId as string,
+                  userId: userRows[0]!.userId as string,
                   message: formatAgentPermanentlyFailed(
                     worker.name,
                     errorMsg,

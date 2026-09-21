@@ -44,7 +44,7 @@ export default async function mediaRoutes(app: FastifyInstance) {
         VALUES (${contentIdeaId}, 'IMAGE', 'PENDING')
         RETURNING *
       `;
-      req = newReq[0];
+      req = newReq[0]!;
     } else {
       const reqs = await sql`
         SELECT mr.*, ci.social_account_id
@@ -96,7 +96,6 @@ export default async function mediaRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'Filename is required' });
     }
 
-    const buffer = await request.raw.body; // In fastify, raw body needs special handling for large files or we can use parts
     // Actually, fastify requires a plugin or raw request handling. 
     // Let's use simple stream to buffer for the raw body in this local mock route
     return new Promise((resolve, reject) => {
@@ -139,8 +138,8 @@ export default async function mediaRoutes(app: FastifyInstance) {
       return reply.code(404).send({ error: 'Media requirement not found or unauthorized' });
     }
 
-    const req = reqs[0];
-    const uploadedAssets: { assetId: string; key: string }[] = [];
+    const req = reqs[0]!;
+    const uploadedAssets: { assetId: string; key: string; cloudflareUrl?: string }[] = [];
 
     await sql.begin(async (sql) => {
       await sql`
@@ -230,9 +229,9 @@ export default async function mediaRoutes(app: FastifyInstance) {
     return { 
       success: true, 
       data: {
-        assetId: uploadedAssets[0].assetId,
-        key: uploadedAssets[0].key,
-        cloudflareUrl: uploadedAssets[0].cloudflareUrl,
+        assetId: uploadedAssets[0]?.assetId,
+        key: uploadedAssets[0]?.key,
+        cloudflareUrl: uploadedAssets[0]?.cloudflareUrl,
         assets: uploadedAssets 
       }
     };
@@ -252,7 +251,7 @@ export default async function mediaRoutes(app: FastifyInstance) {
 
     if (!assets.length) return reply.code(404).send({ error: 'Asset not found or unauthorized' });
     
-    const asset = assets[0];
+    const asset = assets[0]!;
     const objectKey = asset.object_key || asset.storage_url; // Fallback for old assets
     
     if (!objectKey) return reply.code(404).send({ error: 'Asset has no storage key' });
@@ -275,14 +274,14 @@ export default async function mediaRoutes(app: FastifyInstance) {
 
     if (!assets.length) return reply.code(404).send({ error: 'Asset not found or unauthorized' });
     
-    const asset = assets[0];
+    const asset = assets[0]!;
     const objectKey = asset.object_key || asset.storage_url;
     
     if (objectKey) {
       try {
         await storageAdapter.deleteFile(objectKey);
-      } catch (err) {
-        app.log.error(`Failed to delete object key ${objectKey}:`, err);
+      } catch (err: any) {
+        app.log.error(err, `Failed to delete object key ${objectKey}`);
         // Continue to update DB even if storage deletion fails
       }
     }
@@ -337,7 +336,7 @@ export default async function mediaRoutes(app: FastifyInstance) {
       return reply.code(404).send({ error: 'Media requirement not found or unauthorized' });
     }
 
-    const req = reqs[0];
+    const req = reqs[0]!;
     
     if (req.mediaType !== 'CAROUSEL' && files.length > 1) {
       return reply.code(400).send({ error: 'Only Carousel posts support multiple files' });
@@ -404,8 +403,8 @@ export default async function mediaRoutes(app: FastifyInstance) {
 
     return { 
       success: true, 
-      assetId: uploadedAssets[0].assetId, // For backwards compatibility
-      storageUrl: uploadedAssets[0].storageUrl, // For backwards compatibility
+      assetId: uploadedAssets[0]?.assetId, // For backwards compatibility
+      storageUrl: uploadedAssets[0]?.storageUrl, // For backwards compatibility
       assets: uploadedAssets // Array format
     };
   });
@@ -442,7 +441,7 @@ export default async function mediaRoutes(app: FastifyInstance) {
     const assets = await sql`SELECT * FROM content_assets WHERE id = ${id}`;
     if (!assets.length) return reply.code(404).send({ error: 'Asset not found' });
     
-    const reqId = assets[0].mediaRequirementId;
+    const reqId = assets[0]!.mediaRequirementId;
 
     await sql.begin(async (sql) => {
       await sql`

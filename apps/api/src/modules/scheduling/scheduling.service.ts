@@ -190,7 +190,7 @@ export class SchedulingService {
 
         // Max posts/day check
         const postsOnDay = await this.countPostsOnDay(accountId, candidate.toUTC().toJSDate(), tz);
-        if (postsOnDay >= (prefs.maxPostsPerDay ?? 2)) continue;
+        if (postsOnDay >= (prefs?.maxPostsPerDay ?? 2)) continue;
 
         // Score: prefer high-engagement hours
         let score = 0.5;
@@ -294,7 +294,7 @@ export class SchedulingService {
       errors.push('Content not found or not accessible');
       return { valid: false, errors };
     }
-    const idea = ideas[0];
+    const idea = ideas[0]!;
     if (idea.status === 'blocked')    errors.push('Content is blocked by policy');
     if (idea.status === 'cancelled')  errors.push('Content is cancelled');
 
@@ -328,7 +328,7 @@ export class SchedulingService {
     if (!account.length) {
       errors.push('Social account not found');
     } else {
-      const acc = account[0];
+      const acc = account[0]!;
       if (acc.connectionStatus !== 'connected') {
         errors.push(`Instagram account is not connected (status: ${acc.connectionStatus})`);
       }
@@ -347,7 +347,7 @@ export class SchedulingService {
 
     // 7. No time conflict
     const prefs = await this.getPreferences(accountId);
-    const minGap = prefs.min_gap_hours ?? prefs.minGapHours ?? 4;
+    const minGap = prefs?.min_gap_hours ?? prefs?.minGapHours ?? 4;
     const conflict = await this.detectConflicts(accountId, proposedAt, minGap, excludePostId);
     if (conflict) {
       errors.push(`Another post is scheduled too close to this time (minimum gap: ${minGap}h)`);
@@ -369,7 +369,7 @@ export class SchedulingService {
       WHERE p.id = ${postId}
     `;
     if (!posts.length) { return { valid: false, errors: ['Post not found'] }; }
-    const post = posts[0];
+    const post = posts[0]!;
 
     // Content checks
     if (post.status === 'published')  errors.push('Content already published');
@@ -391,7 +391,7 @@ export class SchedulingService {
     if (!activeAsset.length) {
       errors.push('No ACTIVE media asset found');
     } else {
-      const asset = activeAsset[0];
+      const asset = activeAsset[0]!;
       if (asset.reqStatus !== 'READY') {
         errors.push(`Media requirement is not READY (status: ${asset.reqStatus})`);
       }
@@ -408,7 +408,7 @@ export class SchedulingService {
     if (!account.length) {
       errors.push('Social account not found');
     } else {
-      const acc = account[0];
+      const acc = account[0]!;
       if (acc.connectionStatus !== 'connected') errors.push('Instagram account is disconnected');
       if (!acc.accessTokenEncrypted) errors.push('Instagram access token is missing');
       if (acc.tokenExpiresAt && new Date(acc.tokenExpiresAt) < new Date()) {
@@ -528,7 +528,7 @@ export class SchedulingService {
       WHERE id = ${postId} AND social_account_id = ${accountId}
     `;
     if (!posts.length) throw new Error('Post not found');
-    const post = posts[0];
+    const post = posts[0]!;
     if (post.schedule_status === 'CANCELLED') throw new Error('Cannot reschedule a cancelled post');
 
     // Get next version number
@@ -583,7 +583,7 @@ export class SchedulingService {
       WHERE id = ${postId} AND social_account_id = ${accountId}
     `;
     if (!posts.length) throw new Error('Post not found');
-    if (posts[0].scheduleStatus === 'CANCELLED') return; // Already cancelled
+    if (posts[0]!.scheduleStatus === 'CANCELLED') return; // Already cancelled
 
     const versionRows = await sql`
       SELECT COALESCE(MAX(version), 0) AS max_v FROM schedule_versions WHERE post_id = ${postId}
@@ -602,7 +602,7 @@ export class SchedulingService {
       await trx`
         UPDATE content_ideas
         SET status = 'draft', updated_at = NOW()
-        WHERE id = ${posts[0].contentIdeaId}
+        WHERE id = ${posts[0]!.contentIdeaId}
       `;
       await trx`
         INSERT INTO schedule_versions (
@@ -641,7 +641,7 @@ export class SchedulingService {
     `;
 
     if (existing.length > 0) {
-      publishJobId = existing[0].id;
+      publishJobId = existing[0]!.id;
       // Update existing record with new status and bullmq_job_id
       await sql`
         UPDATE publish_jobs

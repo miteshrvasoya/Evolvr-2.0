@@ -30,10 +30,10 @@ export const createStrategyWorker = () => {
           const versionNumber = versionRows[0]?.versionNumber ?? 1;
           await telegramService.send({
             eventType: 'STRATEGY_GENERATED',
-            userId: userRows[0].userId as string,
+            userId: userRows[0]!.userId as string,
             message: formatStrategyGenerated(
               versionNumber,
-              goalRows[0].goalType as string,
+              goalRows[0]!.goalType as string,
               env.EVOLVR_DASHBOARD_URL,
             ),
             idempotencyKey: `tg:STRATEGY_GENERATED:${agentRunId}`,

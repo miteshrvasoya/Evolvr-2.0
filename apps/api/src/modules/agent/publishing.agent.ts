@@ -35,14 +35,14 @@ export class PublishingAgent {
       let finalMediaUrl = post.storageUrl;
       const isLocal = finalMediaUrl.includes('localhost') || finalMediaUrl.startsWith('./');
       
-      if (env.SIMULATION_MODE || (isLocal && !env.STORAGE_PUBLIC_URL)) {
+      if (env.SIMULATION_MODE || (isLocal && !(env as any).STORAGE_PUBLIC_URL)) {
         await tracker.addLog(`Simulation mode active or local storage without tunnel. Using generic placeholder image for Meta API.`);
         // Must be a public image for Instagram API to accept it
         finalMediaUrl = 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80';
-      } else if (isLocal && env.STORAGE_PUBLIC_URL) {
+      } else if (isLocal && (env as any).STORAGE_PUBLIC_URL) {
         // Map local path to public ngrok tunnel
         const filename = finalMediaUrl.split('/').pop();
-        finalMediaUrl = `${env.STORAGE_PUBLIC_URL}/storage/${filename}`;
+        finalMediaUrl = `${(env as any).STORAGE_PUBLIC_URL}/storage/${filename}`;
       }
 
       // 3. Fetch Credentials
@@ -68,7 +68,7 @@ export class PublishingAgent {
 
       try {
         if (!env.SIMULATION_MODE) {
-          const result = await igAdapter.publishPost(accessToken, account.platformAccountId, finalMediaUrl, post.caption || '');
+          const result = await igAdapter.publishPost(accessToken, account.platformAccountId, [finalMediaUrl], post.caption || '');
           platformPostId = result.platformPostId;
         } else {
           // Simulate latency

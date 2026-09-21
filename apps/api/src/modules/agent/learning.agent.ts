@@ -99,7 +99,7 @@ export class LearningAgent {
       // Fetch the goal ID for this account (assuming 1 active goal per account for MVP)
       const goals = await sql`SELECT id FROM admin_goals WHERE social_account_id = ${socialAccountId} AND status = 'ACTIVE' LIMIT 1`;
       if (goals.length > 0) {
-        const goalId = goals[0].id;
+        const goalId = goals[0]!.id;
         
         for (const obs of data.observations) {
           if (obs.confidence < 0.5) continue; // Only save reasonably confident observations

@@ -31,14 +31,14 @@ export const createInstagramSyncWorker = () => {
         WHERE social_account_id = ${socialAccountId} AND status = 'SYNCING'
       `;
       if (existingRuns.length > 0) {
-        syncRunId = existingRuns[0].id;
+        syncRunId = existingRuns[0]!.id;
       } else {
         const result = await sql`
           INSERT INTO instagram_sync_runs (social_account_id, status, started_at)
           VALUES (${socialAccountId}, 'SYNCING', NOW())
           RETURNING id
         `;
-        syncRunId = result[0].id;
+        syncRunId = result[0]!.id;
       }
 
       // 2. Fetch Account Access Token
@@ -50,7 +50,7 @@ export const createInstagramSyncWorker = () => {
       
       if (accountRes.length === 0) throw new Error('Social account not found');
       
-      const { access_token_encrypted, platform_account_id } = accountRes[0];
+      const { access_token_encrypted, platform_account_id } = accountRes[0]!;
       // Note: In a real app we'd decrypt this token using the encryption service.
       // We assume it's directly accessible for this MVP or handled via a central service.
       const accessToken = access_token_encrypted; 
@@ -104,7 +104,7 @@ export const createInstagramSyncWorker = () => {
           let postId = '';
 
           if (existingPost.length > 0) {
-            postId = existingPost[0].id;
+            postId = existingPost[0]!.id;
             // Update caption and fetched_at
             await sql`
               UPDATE posts 
@@ -123,7 +123,7 @@ export const createInstagramSyncWorker = () => {
                 ${new Date(item.timestamp)}, 'published', 'EXTERNAL', NOW()
               ) RETURNING id
             `;
-            postId = insertRes[0].id;
+            postId = insertRes[0]!.id;
             newPosts++;
           }
 
@@ -182,7 +182,7 @@ export const createInstagramSyncWorker = () => {
         if (userRows.length > 0) {
           await telegramService.send({
             eventType: 'INSTAGRAM_SYNC_COMPLETED',
-            userId: userRows[0].userId as string,
+            userId: userRows[0]!.userId as string,
             message: formatInstagramSyncCompleted(newPosts, insightsFetched, env.EVOLVR_DASHBOARD_URL),
             idempotencyKey: `tg:INSTAGRAM_SYNC_COMPLETED:${syncRunId}`,
             actionUrl: `${env.EVOLVR_DASHBOARD_URL}/dashboard/analytics`,
@@ -220,7 +220,7 @@ export const createInstagramSyncWorker = () => {
           if (userRows.length > 0) {
             await telegramService.send({
               eventType: 'INSTAGRAM_AUTH_FAILURE',
-              userId: userRows[0].userId as string,
+              userId: userRows[0]!.userId as string,
               message: formatInstagramAuthFailure(env.EVOLVR_DASHBOARD_URL),
               idempotencyKey: `tg:INSTAGRAM_AUTH_FAILURE:${socialAccountId}`,
               actionUrl: `${env.EVOLVR_DASHBOARD_URL}/dashboard/settings`,

@@ -126,8 +126,8 @@ export const createPublishingWorker = () => {
         // ── 1. Lookup publish_job (if present) for idempotency ────────────────
         if (publishJobId) {
           const existingJob = await sql`SELECT status, platform_post_id FROM publish_jobs WHERE id = ${publishJobId}`;
-          if (existingJob.length > 0 && existingJob[0].status === 'SUCCEEDED') {
-            await log(`Idempotency check: post already published (${existingJob[0].platformPostId}). Skipping.`);
+          if (existingJob.length > 0 && existingJob[0]!.status === 'SUCCEEDED') {
+            await log(`Idempotency check: post already published (${existingJob[0]!.platformPostId}). Skipping.`);
             if (tracker && stepId) await tracker.completeStep(stepId, { skipped: true, reason: 'already_published' });
             return { status: 'skipped', reason: 'already_published' };
           }
@@ -147,8 +147,8 @@ export const createPublishingWorker = () => {
           const postCheck = await sql`SELECT status, platform_post_id FROM posts WHERE id = ${resolvedPostId}`;
           if (postCheck[0]?.status === 'published') {
             await log('Post already published — idempotent return');
-            if (tracker && stepId) await tracker.completeStep(stepId, { platformPostId: postCheck[0].platformPostId });
-            return { status: 'skipped', reason: 'already_published', platformPostId: postCheck[0].platformPostId };
+            if (tracker && stepId) await tracker.completeStep(stepId, { platformPostId: postCheck[0]!.platformPostId });
+            return { status: 'skipped', reason: 'already_published', platformPostId: postCheck[0]!.platformPostId };
           }
 
           const permanentErrors = validation.errors.filter(e =>
@@ -222,7 +222,7 @@ export const createPublishingWorker = () => {
         let finalMediaUrls = [...mediaUrls];
 
         if (env.SIMULATION_MODE) {
-          const isVideo = assets[0].asset_type === 'video_placeholder' || assets[0].asset_type === 'video' || assets[0].asset_type === 'reel' || assets[0].asset_type === 'reels';
+          const isVideo = assets[0]!.asset_type === 'video_placeholder' || assets[0]!.asset_type === 'video' || assets[0]!.asset_type === 'reel' || assets[0]!.asset_type === 'reels';
           await log(`Simulation mode — using placeholder ${isVideo ? 'video' : 'image'}`);
           const placeholderUrl = isVideo 
             ? 'https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4' 
@@ -246,9 +246,9 @@ export const createPublishingWorker = () => {
         if (isRetry || attemptNumber > 1) {
           const existingPost = await sql`SELECT platform_post_id FROM posts WHERE id = ${resolvedPostId}`;
           if (existingPost[0]?.platformPostId) {
-            await log(`Duplicate guard: post already published as ${existingPost[0].platformPostId}`);
-            if (tracker && stepId) await tracker.completeStep(stepId, { platformPostId: existingPost[0].platformPostId });
-            return { status: 'skipped', reason: 'already_published', platformPostId: existingPost[0].platformPostId };
+            await log(`Duplicate guard: post already published as ${existingPost[0]!.platformPostId}`);
+            if (tracker && stepId) await tracker.completeStep(stepId, { platformPostId: existingPost[0]!.platformPostId });
+            return { status: 'skipped', reason: 'already_published', platformPostId: existingPost[0]!.platformPostId };
           }
         }
 
@@ -271,7 +271,7 @@ export const createPublishingWorker = () => {
             const result = await igAdapter.publishPost(
               accessToken,
               account.platformAccountId,
-              finalMediaUrl,
+              finalMediaUrls,
               post.caption || '',
               post.assetType
             );
@@ -328,7 +328,7 @@ export const createPublishingWorker = () => {
               if (userRows.length > 0) {
                 await telegramService.send({
                   eventType: 'PUBLISH_FAILED_PERMANENT',
-                  userId: userRows[0].userId as string,
+                  userId: userRows[0]!.userId as string,
                   message: formatPublishFailedPermanent(
                     (post.caption ?? '').slice(0, 60),
                     errCode,
@@ -398,7 +398,7 @@ export const createPublishingWorker = () => {
           if (userRows.length > 0) {
             await telegramService.send({
               eventType: 'PUBLISH_SUCCEEDED',
-              userId: userRows[0].userId as string,
+              userId: userRows[0]!.userId as string,
               message: formatPublishSucceeded(
                 (post.caption ?? '').slice(0, 60),
                 new Date(),

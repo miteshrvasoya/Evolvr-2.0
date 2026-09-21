@@ -22,7 +22,7 @@ async function seed() {
 
     if (result.length > 0) {
       console.log('✅ Admin user created:');
-      console.log(`   Email: ${result[0].email}`);
+      console.log(`   Email: ${result[0]!.email}`);
       console.log(`   Password: admin123`);
     } else {
       console.log('ℹ️ Admin user already exists. Skipping.');

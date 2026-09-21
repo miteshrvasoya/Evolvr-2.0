@@ -5,6 +5,7 @@ import { LocalStorageAdapter } from '../storage/local.adapter.js';
 import { AssetGenerationService } from '../media/asset-generation.service.js';
 import { queues } from '../../queues/index.js';
 import { getLLMProvider } from '../llm/index.js';
+import { getStorageAdapter } from '../storage/index.js';
 import path from 'path';
 
 export default async function contentRoutes(app: FastifyInstance) {
@@ -180,7 +181,7 @@ export default async function contentRoutes(app: FastifyInstance) {
 
     // Verify ownership
     const existing = await sql`
-      SELECT cap.*, ci.social_account_id
+      SELECT cap.*, ci.social_account_id, cap.media_requirement_id
       FROM content_asset_prompts cap
       JOIN content_ideas ci ON cap.content_idea_id = ci.id
       WHERE cap.id = ${promptId} AND ci.social_account_id = ${accountId}
@@ -192,6 +193,7 @@ export default async function contentRoutes(app: FastifyInstance) {
     // Create a new user-edited version (never overwrite original)
     const newPromptId = await assetService.persistPrompt({
       contentIdeaId: original.contentIdeaId,
+      mediaRequirementId: original.media_requirement_id as string,
       assetType: original.assetType,
       promptText: promptText.trim(),
       source: 'user_edited',
@@ -279,6 +281,7 @@ Provide an improved prompt.`;
     // Save as new 'improved' version
     const newPromptId = await assetService.persistPrompt({
       contentIdeaId: ideaId,
+      mediaRequirementId: latestPrompt?.media_requirement_id || (idea as any).mediaRequirementId || null as any,
       assetType: assetType as any,
       promptText: improvedPromptText,
       source: 'improved',

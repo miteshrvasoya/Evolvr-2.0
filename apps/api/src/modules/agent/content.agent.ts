@@ -43,7 +43,7 @@ export class ContentAgent {
       const autonomyLevel = goals[0]?.autonomyLevel || 'supervised';
 
       const contentMix = strategy.contentMix as Record<string, number>;
-      const activePillars = Object.keys(contentMix).filter(k => contentMix[k] > 0);
+      const activePillars = Object.keys(contentMix).filter(k => contentMix[k]! > 0);
 
       const ideaContext: ContentIdeationContext = {
         niche: profile.niche || 'General',
@@ -196,7 +196,7 @@ export class ContentAgent {
               contentIdeaId: ideaId,
               mediaRequirementId: reqId,
               assetType: assetType as any,
-              promptText: finalPromptText,
+              promptText: finalPromptText || '',
               source: 'ai_generated',
             });
 

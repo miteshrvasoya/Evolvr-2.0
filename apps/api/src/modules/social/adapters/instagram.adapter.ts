@@ -161,9 +161,9 @@ export class InstagramAdapter {
 
       if (isVideo) {
         createParams.append('media_type', 'REELS');
-        createParams.append('video_url', mediaUrls[0]);
+        createParams.append('video_url', mediaUrls[0]!);
       } else {
-        createParams.append('image_url', mediaUrls[0]);
+        createParams.append('image_url', mediaUrls[0]!);
       }
 
       const { response: createRes, data: createData } = await this.fetchWithLog(`${createUrl}?${createParams.toString()}`, { method: 'POST' });
