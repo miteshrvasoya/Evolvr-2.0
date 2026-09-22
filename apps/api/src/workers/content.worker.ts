@@ -67,6 +67,7 @@ export const createContentWorker = () => {
   }, { 
     connection: redisConnection,
     stalledInterval: 300000,
+    skipDelayCheck: true,
   });
 
   return worker;

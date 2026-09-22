@@ -450,6 +450,7 @@ export const createPublishingWorker = () => {
     {
       connection: redisConnection,
       stalledInterval: 300000,
+    drainDelay: 60000,
     },
   );
 

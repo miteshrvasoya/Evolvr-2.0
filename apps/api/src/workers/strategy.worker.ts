@@ -76,6 +76,7 @@ export const createStrategyWorker = () => {
   }, { 
     connection: redisConnection,
     stalledInterval: 300000,
+    skipDelayCheck: true,
   });
 
   return worker;

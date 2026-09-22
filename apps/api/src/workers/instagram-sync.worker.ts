@@ -253,6 +253,7 @@ export const createInstagramSyncWorker = () => {
   }, { 
     connection: redisConnection,
     stalledInterval: 300000,
+    skipDelayCheck: true,
   });
 
   return worker;
