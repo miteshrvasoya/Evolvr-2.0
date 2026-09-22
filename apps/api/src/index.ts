@@ -5,7 +5,7 @@ import cookie from '@fastify/cookie';
 import multipart from '@fastify/multipart';
 import { env } from './config/env.js';
 import { sql } from './db/client.js';
-import { startWorkers, stopWorkers } from './workers/index.js';
+import { bootstrapOnDemandWorkers, stopWorkers } from './workers/index.js';
 import { closeQueues } from './queues/index.js';
 import authPlugin from './modules/auth/auth.plugin.js';
 import authRoutes from './modules/auth/auth.routes.js';
@@ -129,8 +129,8 @@ export async function buildApp(): Promise<FastifyInstance> {
 async function start() {
   const app = await buildApp();
 
-  // Start background workers
-  startWorkers();
+  // Bootstraps workers that need to process pre-existing delayed jobs on app startup
+  bootstrapOnDemandWorkers();
 
   const shutdown = async (signal: string) => {
     app.log.info(`Received ${signal}. Shutting down gracefully...`);

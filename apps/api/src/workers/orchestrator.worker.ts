@@ -295,7 +295,7 @@ export const createOrchestratorWorker = () => {
   }, {
     connection: redisConnection,
     stalledInterval: 300000,
-    skipDelayCheck: true,
+    drainDelay: 300000,
   });
 
 
