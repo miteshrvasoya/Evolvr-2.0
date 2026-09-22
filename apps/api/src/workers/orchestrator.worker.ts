@@ -294,7 +294,7 @@ export const createOrchestratorWorker = () => {
     }
   }, {
     connection: redisConnection,
-    limiter: { max: 10, duration: 1000 }
+    stalledInterval: 300000,
   });
 
 

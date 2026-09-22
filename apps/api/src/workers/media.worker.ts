@@ -120,7 +120,7 @@ export const createMediaWorker = () => {
     },
     {
       connection: redisConnection,
-      limiter: { max: 5, duration: 1000 },
+      stalledInterval: 300000,
       // BullMQ-level retries disabled — we manage our own retry scheduling
       // so we don't accidentally re-run the same attempt multiple times
     }

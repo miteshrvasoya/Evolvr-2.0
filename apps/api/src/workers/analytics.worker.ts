@@ -47,7 +47,7 @@ export const createAnalyticsWorker = () => {
     }
   }, { 
     connection: redisConnection,
-    limiter: { max: 5, duration: 1000 }
+    stalledInterval: 300000,
   });
 
   return worker;
