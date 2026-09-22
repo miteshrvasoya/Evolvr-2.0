@@ -9,8 +9,11 @@
     "start": "node dist/index.js",
     "lint": "tsc --noEmit",
     "db:migrate": "tsx --env-file=../../.env src/db/migrate.ts",
+    "db:migrate:prod": "node dist/db/migrate.js",
     "db:rollback": "tsx --env-file=../../.env src/db/rollback.ts",
-    "db:seed": "tsx --env-file=../../.env src/db/seed.ts"
+    "db:rollback:prod": "node dist/db/rollback.js",
+    "db:seed": "tsx --env-file=../../.env src/db/seed.ts",
+    "db:seed:prod": "node dist/db/seed.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.30.1",

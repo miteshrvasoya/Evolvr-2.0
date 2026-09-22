@@ -30,11 +30,23 @@
     "db:migrate": {
       "cache": false
     },
+    "db:migrate:prod": {
+      "cache": false,
+      "dependsOn": ["^build", "build"]
+    },
     "db:rollback": {
       "cache": false
     },
+    "db:rollback:prod": {
+      "cache": false,
+      "dependsOn": ["^build", "build"]
+    },
     "db:seed": {
       "cache": false
+    },
+    "db:seed:prod": {
+      "cache": false,
+      "dependsOn": ["^build", "build"]
     }
   }
 }
