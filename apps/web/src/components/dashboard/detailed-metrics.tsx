@@ -38,7 +38,17 @@ export function DetailedMetrics({ history }: DetailedMetricsProps) {
 
   const filteredHistory = useMemo(() => {
     if (!history || history.length === 0) return [];
-    return history.slice(Math.max(history.length - timeRange, 0));
+    
+    // Deduplicate by day, keeping the last record of each day
+    const dailyMap = new Map<string, AccountMetricsRow>();
+    for (const m of history) {
+      const dateVal = (m.capturedAt as string) || (m.captured_at as string);
+      const dayKey = new Date(dateVal).toLocaleDateString('en-US');
+      dailyMap.set(dayKey, m);
+    }
+    const deduplicated = Array.from(dailyMap.values());
+    
+    return deduplicated.slice(Math.max(deduplicated.length - timeRange, 0));
   }, [history, timeRange]);
 
   const chartData = useMemo(() => {

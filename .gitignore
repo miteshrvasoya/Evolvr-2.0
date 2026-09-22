@@ -50,3 +50,7 @@ apps/api/uploads/
 
 # pnpm
 .pnpm-debug.log
+
+# Logs
+*@app.log
+*app.log

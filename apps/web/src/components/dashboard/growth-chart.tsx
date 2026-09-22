@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo } from 'react';
 import {
   LineChart,
   Line,
@@ -17,11 +18,20 @@ interface GrowthChartProps {
 }
 
 export function GrowthChart({ data }: GrowthChartProps) {
-  const chartData = data.map((m) => ({
-    date: new Date(m.capturedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-    followers: m.followers,
-    reach: m.reach,
-  }));
+  const chartData = useMemo(() => {
+    if (!data || data.length === 0) return [];
+    
+    const dailyMap = new Map<string, { date: string; followers: number; reach: number }>();
+    for (const m of data) {
+      const dayKey = new Date(m.capturedAt).toLocaleDateString('en-US');
+      dailyMap.set(dayKey, {
+        date: new Date(m.capturedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        followers: m.followers,
+        reach: m.reach,
+      });
+    }
+    return Array.from(dailyMap.values());
+  }, [data]);
 
   return (
     <ResponsiveContainer width="100%" height={240}>
