@@ -6,14 +6,14 @@
   "scripts": {
     "dev": "npx kill-port 3001 & tsx watch --env-file=../../.env src/index.ts",
     "build": "tsc -p tsconfig.build.json",
-    "start": "node dist/index.js",
+    "start": "node --env-file-if-exists=../../.env dist/index.js",
     "lint": "tsc --noEmit",
     "db:migrate": "tsx --env-file=../../.env src/db/migrate.ts",
-    "db:migrate:prod": "node dist/db/migrate.js",
+    "db:migrate:prod": "node --env-file-if-exists=../../.env dist/db/migrate.js",
     "db:rollback": "tsx --env-file=../../.env src/db/rollback.ts",
-    "db:rollback:prod": "node dist/db/rollback.js",
+    "db:rollback:prod": "node --env-file-if-exists=../../.env dist/db/rollback.js",
     "db:seed": "tsx --env-file=../../.env src/db/seed.ts",
-    "db:seed:prod": "node dist/db/seed.js"
+    "db:seed:prod": "node --env-file-if-exists=../../.env dist/db/seed.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.30.1",
