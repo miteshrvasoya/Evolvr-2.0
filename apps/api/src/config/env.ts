@@ -7,7 +7,7 @@ const envSchema = z.object({
   NEXT_PUBLIC_API_URL: z.string().default('http://localhost:3001'),
 
   // Database
-  DATABASE_URL: z.string().default('postgresql://evolvr:evolvr@localhost:5432/evolvr'),
+  DATABASE_URL: z.string().default('postgresql://neondb_owner:npg_bkOJmVK0Ps2H@ep-hidden-lake-b5y7apap-pooler.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require'),
 
   // Redis
   REDIS_URL: z.string().default('redis://localhost:6379'),
