@@ -86,7 +86,7 @@ Rules for Caption:
 
 Rules for Media Direction:
 - If format is static_post, provide a highly detailed 'imagePrompt' describing the exact visual composition, lighting, style, and subject.
-- If format is carousel, OMIT 'imagePrompt' and provide 'carouselPrompts' (an array of 3 to 10 highly detailed prompts for each slide). Ensure stylistic consistency across all slide prompts (same art style, lighting, color palette).
+- If format is carousel, OMIT 'imagePrompt' and provide 'carouselPrompts' (an array of 3 to 10 highly detailed prompts for each slide). Ensure stylistic consistency across all slide prompts (same art style, lighting, color palette). For each slide after the first, explicitly append the previous slide's prompt as context (e.g. '[Slide 2] ... [Previous context: <slide 1 prompt summary>]') to maintain narrative and visual continuity.
 - If format is reel or story, provide a detailed 'videoScript' with a shot-by-shot breakdown (timecodes, visuals, audio/text overlays), AND provide an 'imagePrompt' for a high-quality cover image.`,
 
     userPrompt: `Concept: ${ctx.concept}

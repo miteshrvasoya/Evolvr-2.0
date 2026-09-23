@@ -195,7 +195,7 @@ export const createPublishingWorker = () => {
                 json_build_object(
                   'storage_url', ca.storage_url,
                   'asset_type', ca.asset_type
-                )
+                ) ORDER BY ca.order_index ASC, ca.created_at ASC
               ) FILTER (WHERE ca.id IS NOT NULL), 
               '[]'
             ) as assets

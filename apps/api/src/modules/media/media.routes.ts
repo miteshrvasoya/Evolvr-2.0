@@ -148,15 +148,15 @@ export default async function mediaRoutes(app: FastifyInstance) {
         WHERE media_requirement_id = ${req.id} AND asset_status = 'ACTIVE'
       `;
 
-      for (const file of files) {
+      for (const [i, file] of files.entries()) {
         const assetId = randomUUID();
         await sql`
           INSERT INTO content_assets
             (id, content_idea_id, media_requirement_id, asset_type, object_key, storage_provider, mime_type, 
-             generation_status, source, asset_status, uploaded_by)
+             generation_status, source, asset_status, uploaded_by, order_index)
           VALUES
             (${assetId}, ${req.contentIdeaId}, ${req.id}, ${req.mediaType}, ${file.key}, ${env.STORAGE_PROVIDER}, ${file.mimetype},
-             'generated', 'USER_UPLOADED', 'ACTIVE', ${userId})
+             'generated', 'USER_UPLOADED', 'ACTIVE', ${userId}, ${i})
         `;
         const cloudflareUrl = await storageAdapter.generateDownloadUrl(file.key, 604800);
         uploadedAssets.push({ assetId, key: file.key, cloudflareUrl });

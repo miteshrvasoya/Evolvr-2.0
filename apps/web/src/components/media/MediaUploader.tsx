@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { Upload, X, Loader2, Image as ImageIcon, Video, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Upload, X, Loader2, Image as ImageIcon, Video, CheckCircle2, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
@@ -80,6 +80,18 @@ export function MediaUploader({ contentIdeaId, mediaRequirement, onUploadComplet
       return newFiles;
     });
     setProgress(0);
+  };
+
+  const moveFile = (index: number, direction: 'left' | 'right') => {
+    setFiles(prev => {
+      const newFiles = [...prev];
+      if (direction === 'left' && index > 0) {
+        [newFiles[index - 1], newFiles[index]] = [newFiles[index]!, newFiles[index - 1]!];
+      } else if (direction === 'right' && index < newFiles.length - 1) {
+        [newFiles[index], newFiles[index + 1]] = [newFiles[index + 1]!, newFiles[index]!];
+      }
+      return newFiles;
+    });
   };
 
   const uploadFile = async () => {
@@ -170,12 +182,33 @@ export function MediaUploader({ contentIdeaId, mediaRequirement, onUploadComplet
               )}
               
               {!isUploading && (
-                <button 
-                  onClick={() => removeFile(i)}
-                  className="absolute top-2 right-2 p-1.5 rounded-full bg-black/50 text-white hover:bg-black/80 transition-colors opacity-0 group-hover:opacity-100"
-                >
-                  <X className="h-4 w-4" />
-                </button>
+                <>
+                  {isCarousel && files.length > 1 && (
+                    <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 rounded-lg p-1">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); moveFile(i, 'left'); }}
+                        disabled={i === 0}
+                        className="p-1 rounded hover:bg-white/20 text-white disabled:opacity-30 disabled:hover:bg-transparent"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </button>
+                      <span className="text-white text-xs font-medium px-1">{i + 1} / {files.length}</span>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); moveFile(i, 'right'); }}
+                        disabled={i === files.length - 1}
+                        className="p-1 rounded hover:bg-white/20 text-white disabled:opacity-30 disabled:hover:bg-transparent"
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </button>
+                    </div>
+                  )}
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); removeFile(i); }}
+                    className="absolute top-2 right-2 p-1.5 rounded-full bg-black/50 text-white hover:bg-black/80 transition-colors opacity-0 group-hover:opacity-100"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </>
               )}
             </div>
           ))}
