@@ -2,6 +2,8 @@ import { FastifyInstance } from 'fastify';
 import { sql } from '../../db/client.js';
 import { getStorageAdapter } from '../storage/index.js';
 import { randomUUID } from 'crypto';
+import { telegramService } from '../notifications/telegram.service.js';
+import { formatMediaUploaded } from '../notifications/telegram.formatter.js';
 import path from 'path';
 import { env } from '../../config/env.js';
 import { SchedulingAgent } from '../scheduling/scheduling.agent.js';
@@ -187,6 +189,26 @@ export default async function mediaRoutes(app: FastifyInstance) {
         )
       `;
     });
+
+    // Notify Telegram that media is uploaded
+    try {
+      const dashboardUrl = (env as any).EVOLVR_DASHBOARD_URL || (env as any).FRONTEND_URL || 'http://localhost:3000';
+      const concept = req.concept || 'Your content';
+      const tgMsg = formatMediaUploaded(concept, dashboardUrl);
+      
+      const accRes = await sql`SELECT user_id FROM social_accounts WHERE id = ${req.socialAccountId}`;
+      const userRecord = accRes[0];
+      if (userRecord && userRecord.userId) {
+        await telegramService.send({
+          eventType: 'MEDIA_UPLOADED',
+          userId: userRecord.userId,
+          message: tgMsg,
+          idempotencyKey: `tg:MEDIA_UPLOADED:${req.id}`
+        });
+      }
+    } catch (err) {
+      console.error('[MediaUpload] Failed to send Telegram notification:', err);
+    }
 
     // Auto-schedule post and notify user asynchronously
     (async () => {

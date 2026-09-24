@@ -1,4 +1,4 @@
-﻿/**
+/**
  * telegram.formatter.ts - Pure message-formatting functions for Telegram notifications.
  *
  * Rules:
@@ -95,6 +95,31 @@ export function formatContentBatchGenerated(
     'Next: Media generation queued; scheduling will follow\\.',
     '',
     `[View Content](${escMd(dashboardUrl + '/dashboard/content')})`,
+  ].join('\n');
+}
+
+export function formatWaitingForMedia(concept: string, mediaType: string, slides: number, dashboardUrl: string, ideaId: string): string {
+  return [
+    '🎨 *Evolvr Needs Media*',
+    '',
+    `Concept: ${escMd(trunc(concept))}`,
+    `Media: ${escMd(mediaType)}`,
+    slides > 1 ? `Slides: ${slides}` : '',
+    '',
+    'Generate using ChatGPT or Gemini and upload it in Evolvr\\.',
+    '',
+    `[Open Content](${escMd(dashboardUrl + '/dashboard/content/' + ideaId)})`,
+  ].filter(line => line !== '').join('\n');
+}
+
+export function formatMediaUploaded(concept: string, dashboardUrl: string): string {
+  return [
+    '✅ *Media Uploaded*',
+    '',
+    `Media uploaded for: ${escMd(trunc(concept))}`,
+    'The scheduled workflow will now continue\\.',
+    '',
+    `[Open Content](${escMd(dashboardUrl + '/dashboard/content')})`,
   ].join('\n');
 }
 

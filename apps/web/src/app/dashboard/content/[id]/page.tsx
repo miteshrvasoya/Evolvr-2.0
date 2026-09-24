@@ -129,6 +129,30 @@ function PromptCard({
     finally { setSaving(false); }
   }
 
+  function handleGenerateWith(provider: 'chatgpt' | 'gemini') {
+    const preamble = provider === 'chatgpt' 
+      ? 'Act as an expert Instagram media creator. Here are my requirements:\\n\\n'
+      : 'Act as an expert Instagram media creator. Please generate media based on the following requirements:\\n\\n';
+    
+    const formattedPrompt = preamble + prompt.promptText;
+    
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(formattedPrompt);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = formattedPrompt; document.body.appendChild(ta); ta.select();
+        document.execCommand('copy'); document.body.removeChild(ta);
+      }
+      toast({ title: 'Prompt copied', description: `Opening ${provider === 'chatgpt' ? 'ChatGPT' : 'Gemini'}...` });
+      
+      const url = provider === 'chatgpt' ? 'https://chatgpt.com/' : 'https://gemini.google.com/';
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch {
+      toast({ variant: 'destructive', title: 'Copy failed' });
+    }
+  }
+
   return (
     <div className={cn(
       'rounded-xl border overflow-hidden transition-all duration-200',
@@ -179,11 +203,19 @@ function PromptCard({
                 {prompt.promptText}
               </div>
               {hasFailed && isCurrent && (
-                <div className="rounded-lg bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 p-3 text-xs flex gap-2.5">
-                  <Zap className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                <div className="rounded-lg bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 p-3 text-xs flex gap-2.5">
+                  <Bot className="h-4 w-4 text-purple-600 shrink-0 mt-0.5" />
                   <div>
-                    <p className="font-semibold text-amber-800 mb-0.5">Use this prompt manually</p>
-                    <p className="text-amber-700 leading-relaxed">Copy into Midjourney, DALL-E, Stable Diffusion, then upload the result above.</p>
+                    <p className="font-semibold text-purple-800 mb-1">Manual Generation Required</p>
+                    <p className="text-purple-700 leading-relaxed mb-3">Generate the media using your preferred AI provider, then upload the results.</p>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" onClick={() => handleGenerateWith('chatgpt')} className="h-7 text-[10px] bg-white text-purple-700 border-purple-200 hover:bg-purple-50">
+                        Generate with ChatGPT
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => handleGenerateWith('gemini')} className="h-7 text-[10px] bg-white text-blue-700 border-blue-200 hover:bg-blue-50">
+                        Generate with Gemini
+                      </Button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -546,7 +578,7 @@ export default function ContentDetailPage({ params }: PageProps) {
                   <p className="text-sm font-semibold text-muted-foreground">No media yet</p>
                   <p className="text-xs text-muted-foreground/60 mt-0.5">Upload manually or retry AI generation</p>
                 </div>
-                {!uploading && (
+                {!(uploading || hasFailed) && (
                   <Button size="sm" variant="outline" onClick={() => setUploading(true)} className="gap-1.5 text-xs">
                     <Upload className="h-3.5 w-3.5" /> Upload Manually
                   </Button>
@@ -554,14 +586,16 @@ export default function ContentDetailPage({ params }: PageProps) {
               </div>
             )}
 
-            {uploading && (
+            {(uploading || hasFailed) && activeImages.length === 0 && (
               <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
                 <MediaUploader
                   contentIdeaId={id}
                   mediaRequirement={imageReq ?? { id: 'new', mediaType: 'IMAGE' } as any}
                   onUploadComplete={() => { setUploading(false); handleRefresh(); }}
                 />
-                <Button variant="ghost" size="sm" onClick={() => setUploading(false)} className="text-xs w-full">Cancel</Button>
+                {!hasFailed && (
+                  <Button variant="ghost" size="sm" onClick={() => setUploading(false)} className="text-xs w-full">Cancel</Button>
+                )}
               </div>
             )}
 

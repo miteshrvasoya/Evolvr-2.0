@@ -11,6 +11,8 @@ import {
 } from '../../prompts/content.v1.js';
 import { AssetGenerationService } from '../media/asset-generation.service.js';
 import { queues } from '../../queues/index.js';
+import { telegramService } from '../notifications/telegram.service.js';
+import { formatWaitingForMedia } from '../notifications/telegram.formatter.js';
 import { env } from '../../config/env.js';
 
 export class ContentAgent {
@@ -176,58 +178,72 @@ export class ContentAgent {
           const assetType = isCarousel ? 'carousel' : (idea.format === 'reel' || idea.format === 'story' ? 'video_placeholder' : 'image');
 
           await tracker.logEvent(stepId, 'PROMPT_PERSISTED', 'info',
-            `Persisting ${promptsToPersist.length} ${assetType} prompt(s) for idea ${ideaId} (before generation)...`);
+            `Generating structured manual generation prompt for idea ${ideaId} [${assetType}]...`);
 
           const reqId = randomUUID();
           await sql`
             INSERT INTO media_requirements (id, content_idea_id, media_type, status)
-            VALUES (${reqId}, ${ideaId}, ${isCarousel ? 'CAROUSEL' : assetType}, 'PENDING')
+            VALUES (${reqId}, ${ideaId}, ${isCarousel ? 'CAROUSEL' : assetType}, 'MANUAL_REQUIRED')
           `;
 
-          // Persist each prompt and queue a generation job
-          for (let i = 0; i < promptsToPersist.length; i++) {
-            const promptText = promptsToPersist[i];
-            
-            // Note: If carousel, we could prepend slide info to the prompt text if needed for the model,
-            // but the system prompt instructed it to be cohesive.
-            const finalPromptText = isCarousel ? `[Slide ${i + 1}] ${promptText}` : promptText;
+          // Generate highly structured prompt
+          const structuredPrompt = `
+**CONTENT CONTEXT**
+Topic: ${idea.concept}
+Format: ${idea.format}
+Platform: Instagram
+Media Type: ${isCarousel ? 'Carousel (' + promptsToPersist.length + ' Slides)' : assetType}
+Aspect Ratio: ${isCarousel || idea.format === 'static_post' ? '4:5 (Portrait)' : '9:16 (Vertical)'}
 
-            const promptId = await this.assetService.persistPrompt({
-              contentIdeaId: ideaId,
-              mediaRequirementId: reqId,
-              assetType: assetType as any,
-              promptText: finalPromptText || '',
-              source: 'ai_generated',
-            });
+**CAPTION / TEXT CONTEXT**
+Hook: "${idea.hook}"
 
-            // ── ENQUEUE async media generation job ──
-            const idempotencyKey = `${ideaId}-${assetType}-${i + 1}`;
-            await queues.mediaGeneration.add(
-              'generate-asset',
-              {
-                contentIdeaId: ideaId,
-                promptId,
-                assetType,
-                attemptNumber: 1,
-                idempotencyKey,
-                agentRunId: runId,
-              },
-              {
-                jobId: `asset-${ideaId}-${assetType}-${i + 1}`,
-                delay: 500,
-              },
-            );
-          }
+**VISUAL DIRECTION**
+${isCarousel 
+  ? promptsToPersist.map((p, i) => `\n### Slide ${i + 1}\n${p}`).join('\n') 
+  : promptsToPersist[0]}
 
-          // Update asset_generation_status to pending — generation queued but not yet started
+**CONSTRAINTS**
+- Do not include any text in the image unless explicitly requested in the prompt.
+- Maintain consistent visual style, lighting, and color palette.
+- Output high-resolution, production-ready visuals.
+`.trim();
+
+          await this.assetService.persistPrompt({
+            contentIdeaId: ideaId,
+            mediaRequirementId: reqId,
+            assetType: assetType as any,
+            promptText: structuredPrompt,
+            source: 'ai_generated',
+          });
+
+          // Update asset_generation_status to needs_attention
           await sql`
             UPDATE content_ideas
-            SET asset_generation_status = 'pending', updated_at = NOW()
+            SET asset_generation_status = 'needs_attention',
+                needs_attention = true,
+                needs_attention_reason = 'waiting_for_media',
+                updated_at = NOW()
             WHERE id = ${ideaId}
           `;
 
-          await tracker.logEvent(stepId, 'MEDIA_GENERATION_QUEUED', 'info',
-            `Media generation job(s) queued for idea ${ideaId} [${assetType}]. Generation will proceed asynchronously.`);
+          await tracker.logEvent(stepId, 'WAITING_FOR_MEDIA', 'info',
+            `Media is required for idea ${ideaId}. Entering waiting state.`);
+
+          // Trigger Telegram Notification
+          const dashboardUrl = (env as any).EVOLVR_DASHBOARD_URL || (env as any).FRONTEND_URL || 'http://localhost:3000';
+          const tgMsg = formatWaitingForMedia(idea.concept, isCarousel ? 'Instagram Carousel' : 'Instagram Image', isCarousel ? promptsToPersist.length : 1, dashboardUrl, ideaId);
+          
+          const accRes = await sql`SELECT user_id FROM social_accounts WHERE id = ${socialAccountId}`;
+          const userRecord = accRes[0];
+          if (userRecord && userRecord.userId) {
+            await telegramService.send({
+              eventType: 'WAITING_FOR_MEDIA',
+              userId: userRecord.userId,
+              message: tgMsg,
+              idempotencyKey: `tg:WAITING_FOR_MEDIA:${ideaId}`
+            });
+          }
         }
       }
 
